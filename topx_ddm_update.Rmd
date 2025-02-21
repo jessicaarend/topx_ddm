@@ -12,7 +12,7 @@ output: html_document
 rm(list=ls())
 
 # read in packages
-pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats)
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats, corrplot)
 ```
 
 ## load DDM (hssm) data
@@ -51,6 +51,8 @@ dat_ddm_bl2 <- filter(dat_ddm_bl2, participant_id %in% common_ids)
 
 # Combine both datasets
 dat_ddm_all <- bind_rows(dat_ddm_bl1, dat_ddm_bl2)
+
+dat_ddm_all_long <- dat_ddm_all
 
 # Rename, pivot, and add `subj_type` column
 dat_ddm_all <- dat_ddm_all %>%
@@ -694,6 +696,137 @@ lmer_plot_sep(z_dat_all, "Degrees of Bias",
 # summary(anova_result)
 # TukeyHSD(anova_result) # 1 = woman, 2 = man, 3 = enby/other
 ```
+
+# correlations - 14 param
+## ddm matrix - all data
+```{r}
+# filter ddm data (long form) to only include ddm variables, for correlation matrix
+dat_cor_all <- dat_ddm_all_long %>% 
+  select(-c(participant_id, visit))
+
+# run the correlations
+dat_cor_all <- cor(dat_cor_all)
+
+# plot a correlation matrix
+corrplot(dat_cor_all, method = "color", addCoef.col = 'white')
+```
+
+## ddm matrix - bl1
+```{r}
+dat_ddm_bl1_long <- dat_ddm_all_long %>% 
+  filter(visit == "BL1")
+
+dat_cor_bl1 <- dat_ddm_bl1_long %>% 
+  select(-c(participant_id, visit))
+
+dat_cor_bl1 <- cor(dat_cor_bl1)
+corrplot(dat_cor_bl1, method = "color", addCoef.col = 'white')
+  
+```
+
+## ddm matrix - bl2
+```{r}
+dat_ddm_bl2_long <- dat_ddm_all_long %>% 
+  filter(visit == "BL2")
+
+dat_cor_bl2 <- dat_ddm_bl2_long %>% 
+  select(-c(participant_id, visit))
+
+dat_cor_bl2 <- cor(dat_cor_bl2)
+corrplot(dat_cor_bl2, method = "color", addCoef.col = 'white')
+
+```
+
+# correlations - 4 param
+## calculate intercepts
+```{r}
+# read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
+# Custom function to read, select, and join datasets
+process_data_intc <- function(block, types, column_mappings) {
+  datasets <- lapply(types, function(type) {
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
+    read.csv(file_path) %>%
+      select(all_of(column_mappings[[type]])) %>%
+      rename(!!paste0(type, "_ppt") := participant)
+  })
+  
+  # Perform full joins on all datasets by "participant_id"
+  Reduce(function(x, y) full_join(x, y, by = "participant_id"), datasets) %>%
+    mutate(visit = toupper(block), .after = participant_id)
+}
+
+# Column mappings for different file types
+column_mappings_intc <- list(
+  v = c("participant_id", "v_intc", "participant"),
+  a = c("participant_id", "a_intc", "participant"),
+  t = c("participant_id", "t_intc", "participant"),
+  z = c("participant_id", "z_intc", "participant")
+)
+
+# Process data for each block
+types_intc <- names(column_mappings_intc)
+dat_ddm_bl1_intc <- process_data_intc("bl1", types_intc, column_mappings_intc)
+dat_ddm_bl2_intc <- process_data_intc("bl2", types_intc, column_mappings_intc)
+
+
+# Filter to retain only common participant_ids
+common_ids_intc <- intersect(dat_ddm_bl1_intc$participant_id, dat_ddm_bl2_intc$participant_id)
+dat_ddm_bl1_intc <- filter(dat_ddm_bl1_intc, participant_id %in% common_ids)
+dat_ddm_bl2_intc <- filter(dat_ddm_bl2_intc, participant_id %in% common_ids)
+
+# Combine both datasets
+dat_ddm_all_intc <- bind_rows(dat_ddm_bl1_intc, dat_ddm_bl2_intc)
+```
+
+## ddm intc matrix - all
+```{r}
+dat_cor_all_intc <- dat_ddm_all_intc %>% 
+  mutate(v = v_intc + v_ppt,
+         a = a_intc + a_ppt,
+         t = t_intc + t_ppt,
+         z = z_intc + z_ppt) %>% 
+  select(v, a, t, z)
+
+dat_cor_all_intc <- cor(dat_cor_all_intc)
+corrplot(dat_cor_all_intc, method = "color", addCoef.col = 'white')
+```
+
+## ddm intc matrix - bl1
+```{r}
+dat_cor_bl1_intc <- dat_ddm_bl1_intc %>% 
+  mutate(v = v_intc + v_ppt,
+         a = a_intc + a_ppt,
+         t = t_intc + t_ppt,
+         z = z_intc + z_ppt) %>% 
+  select(v, a, t, z)
+
+dat_cor_bl1_intc <- cor(dat_cor_bl1_intc)
+corrplot(dat_cor_bl1_intc, method = "color", addCoef.col = 'white')
+```
+
+## ddm intc matrix - bl2
+```{r}
+dat_cor_bl2_intc <- dat_ddm_bl2_intc %>% 
+  mutate(v = v_intc + v_ppt,
+         a = a_intc + a_ppt,
+         t = t_intc + t_ppt,
+         z = z_intc + z_ppt) %>% 
+  select(v, a, t, z)
+
+dat_cor_bl2_intc <- cor(dat_cor_bl2_intc)
+corrplot(dat_cor_bl2_intc, method = "color", addCoef.col = 'white')
+```
+
+## ddm corr matrix - bl1
+```{r}
+
+```
+
+## ddm corr matrix - bl2
+```{r}
+
+```
+
 
 # clinical symptoms
 ```{r}
