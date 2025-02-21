@@ -1,7 +1,7 @@
 ---
 title: "ddm_update"
 author: "Jessica Arend"
-date: "2025-02-10"
+date: "2025-02-21"
 output: html_document
 ---
 
@@ -15,41 +15,7 @@ rm(list=ls())
 pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats)
 ```
 
-## load DDM data - old (prior to Dec 2024)
-```{r}
-# # function to reformat DDM data -------
-# format_data_rev <- function(data) {
-#   formatted_data <- data %>% 
-#     separate("X", into = c("parameter", "cttype_subj_idx"), sep = "_", extra = "merge", fill = "right") %>% 
-#     separate(cttype_subj_idx, into = c("cttype", "subj_idx"), sep = "\\.", extra = "merge", fill = "right") %>%
-#     mutate(cttype = gsub("[()]", "", cttype)) %>%
-#     mutate(cttype = gsub("^subj", "", cttype)) %>%
-#     filter(!is.na(cttype), !is.na(subj_idx)) %>%
-#     dplyr::select(-c("X2.5q", "X25q", "X50q", "X75q", "X97.5q"))
-#   return(formatted_data)
-# }
-# 
-# # read in DDM data 
-# dat_bl1_ctl <- read.csv("data/data_20240701/sp1stats_bl1_long.csv")
-# dat_bl1_pt <- read.csv("data/data_20240701/sp2stats_bl1_long.csv")
-# dat_bl2_ctl <- read.csv("data/data_20240701/sp1stats_bl2_long.csv")
-# dat_bl2_pt <- read.csv("data/data_20240701/sp2stats_bl2_long.csv")
-# 
-# # reformat data, naming and combining groups
-# dat_bl1_ctl$group <- "Control"
-# dat_bl1_pt$group <- "Patient"
-# dat_ddm_bl1 <- rbind(dat_bl1_ctl, dat_bl1_pt)
-# dat_ddm_bl1$visit <- "BL1"
-# dat_ddm_bl1 <- format_data_rev(dat_ddm_bl1)
-# 
-# dat_bl2_ctl$group <- "Control"
-# dat_bl2_pt$group <- "Patient"
-# dat_ddm_bl2 <- rbind(dat_bl2_ctl, dat_bl2_pt)
-# dat_ddm_bl2$visit <- "BL2"
-# dat_ddm_bl2 <- format_data_rev(dat_ddm_bl2)
-```
-
-## load DDM (hssm) data - new
+## load DDM (hssm) data
 ```{r}
 # read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
 # Custom function to read, select, and join datasets
@@ -129,8 +95,6 @@ dat_ddm_bl2 <- filter(dat_ddm_bl2, subj_idx != "SP1051")
 dat_ddm_bl1 <- subset(dat_ddm_bl1, (subj_idx %in% dat_ddm_bl2$subj_idx))
 dat_ddm_bl2 <- subset(dat_ddm_bl2, (subj_idx %in% dat_ddm_bl1$subj_idx))
 
-# merge DDM data 
-# dat_ddm_all <- rbind(dat_ddm_bl1, dat_ddm_bl2)
 
 # add z-scores
 calc_z_score <- function(x) {
@@ -147,13 +111,6 @@ dat_ddm_all <- dat_ddm_all %>%
 ```{r}
 # save list of DDM subject IDs
 # write.csv( data.frame(subj = unique(dat_ddm_all$subj_idx)), file = file.path("data", paste0("topx_ddm_sample_subjx_", format(Sys.Date(), "%Y%m%d"), ".csv")), row.names = FALSE)
-
-## old code for above
-## ddm_sample_subjx <- unique(dat_ddm_all$subj_idx)
-## ddm_sample_subjx <- as.data.frame(ddm_sample_subjx)
-## colnames(ddm_sample_subjx)[1] <- "subj"
-## write.csv(ddm_sample_subjx,file=paste0("/Users/arend103/Documents/umn_work/topx_analyses/topx_mri_ddm/data/topx_ddm_sample_subjx_",gsub("-", "", Sys.Date()), ".csv"), row.names = FALSE)
-
 ```
 
 ## load TOPX data
@@ -299,7 +256,6 @@ plot_err_comb
 ```
 
 
-
 ## calculate d'
 ```{r}
 ## create df with  1 row/set of d-primes per subj, picked AX at random. And create numeric value for subj type
@@ -326,24 +282,7 @@ dat_dprime_all_long <- dat_dprime_all %>%
 # dat_dprime_bl2 <- dat_dprime_all %>% filter(visit == "BL2")
 ```
 
-## d'-context w/ visit
-```{r}
-### BL-Comb d' LMER -----------
-#### d'context LMERs to account for visit, age, sex -------
-mod_dcon <- lmer(d_context ~ group * visit + (1|subj_idx) + age + gender, data = dat_dprime_all)
-anova(mod_dcon, type = 3)
-print(emmeans(mod_dcon, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_dcon, list(pairwise ~ visit), adjust = "mvt"))
-#check_model(mod_dcon)
-```
-## d'-expect w/ visit
-```{r}
-#### d'expect LMERs -------
-mod_dexp <- lmer(d_expect ~ group * visit + (1|subj_idx) + age + gender, data = dat_dprime_all)
-anova(mod_dexp, type = 3)
-print(emmeans(mod_dcon, list(pairwise ~ group), adjust = "mvt"))
-#check_model(mod_dexp)
-```
+
 ## d' w/ visit
 ```{r}
 #### d'comb LMER w visit -----
@@ -442,6 +381,7 @@ plot_dprime_comb
 
 # ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Comb.png"), plot_dprime_comb, width = 6, height = 4)
 ```
+
 ## RT w/ visit
 ```{r}
 ### BL-Comb RT LMER w visit -----------
@@ -635,10 +575,6 @@ lmer_plot_sep <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE
 # transform drift rates ---------
 reformat_ddm_var <- function(data) {
 data[data$cttype == "AY" & data$parameter == "v",]$mean <- (-1) * data[data$cttype == "AY" & data$parameter == "v",]$mean
-  ## data[data$cttype == "BX" & data$parameter == "v",]$mean <- (-1) * data[data$cttype == "BX" & data$parameter == "v",]$mean
-  ## data[data$cttype == "BY" & data$parameter == "v",]$mean <- (-1) * data[data$cttype == "BY" & data$parameter == "v",]$mean
-  ## data[data$cttype == "A" & data$parameter == "z",]$mean <- 0.5 - data[data$cttype == "A" & data$parameter == "z",]$mean
-  ## data[data$cttype == "B" & data$parameter == "z",]$mean <- data[data$cttype == "B" & data$parameter == "z",]$mean - 0.5
 return(as.data.frame(data))
 }
 
@@ -718,7 +654,6 @@ anova(mod_a_Age)
 # t - all data
 lmer_plot_comb(t_dat_all, "Non-Decision Times", 
            "Non-Decision Time (t)", 0.15, 0.30, posthoc = TRUE) 
-
 ```
 
 ## non-decision time sep
@@ -746,7 +681,6 @@ t.test(t_dat_all$age_split, t_dat_all$mean, na.rm = TRUE)
 # z - all data
 lmer_plot_comb(z_dat_all, "Degrees of Bias", 
            "Degree of Bias (w)", 0.4, 0.7, posthoc = TRUE) 
-
 ```
 
 # bias sep
@@ -754,21 +688,11 @@ lmer_plot_comb(z_dat_all, "Degrees of Bias",
 lmer_plot_sep(z_dat_all, "Degrees of Bias", 
                  "Degree of Bias (w)", 0.4, 0.7, posthoc = TRUE)
 
-# z - all data, transformed to positive values
-# lmer_plot_comb(z_dat_all_trans, "Degrees of Bias",
-#                "Degree of Bias (w)", -1, 0, posthoc = TRUE)
-# lmer_plot_sep(z_dat_all_trans, "Degrees of Bias",
-#                    "Degree of Bias (w)", -1, 0, posthoc = TRUE)
-
 # investigate gender
 # z_dat_all_trans$gender <- as.factor(z_dat_all_trans$gender)
 # anova_result <- aov(mean ~ gender, data = z_dat_all_trans)
 # summary(anova_result)
 # TukeyHSD(anova_result) # 1 = woman, 2 = man, 3 = enby/other
-
-# ggplot(z_dat_all_trans, aes(x = gender, y = mean)) +
-#   geom_bar(stat = "identity") +
-#   labs(x = "Gender", y = "Bias", title = "1=woman, 2=man, 3=enby/other")
 ```
 
 # clinical symptoms
@@ -827,6 +751,7 @@ plot_vbx_neg
 ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_vBX_BPRSneg.png"), plot_vbx_neg, width = 6, height = 4)
 
 ```
+
 # days between visits
 ```{r}
 dat_topx_AX <- filter(dat_topx_all, cttype == "AX")
@@ -848,7 +773,6 @@ dates$diff <- dates$BL2 - dates$BL1
 mean(dates$diff)
 median(dates$diff)
 sd(dates$diff)
-
 ```
 
 # descriptives
