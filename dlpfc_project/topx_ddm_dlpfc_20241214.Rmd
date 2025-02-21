@@ -1,0 +1,532 @@
+---
+title: "TOPX_ddm_dlPFC_20241214"
+author: "Jessica Arend"
+date: "2024-12-14"
+output: html_document
+---
+
+```{r}
+# clear workspace
+rm(list=ls())
+
+# read in packages
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, purrr)
+```
+
+# read in fMRI data
+```{r}
+dat_mri <- read.csv("~/Documents/umn_work/topx_analyses/data/nontask_data/zstats_schaefer400+Tian_B-A.csv")
+dat_mri$sub <- gsub("sub-", "", dat_mri$sub)
+dat_mri$ses <- gsub("ses-", "", dat_mri$ses)
+colnames(dat_mri)[1] <- "subj"
+colnames(dat_mri)[2] <- "visit"
+colnames(dat_mri)<-gsub("X17Networks_","",colnames(dat_mri))
+
+# note: names ending in .rh or .lh are Tian parcels, names starting in RH_ or LH_ are Schaefer parcels
+
+dat_mri <- dat_mri %>% 
+  mutate(
+    group = case_when(
+      str_sub(subj, 1, 3) == "SP1" ~ "Control",
+      str_sub(subj, 1, 3) == "SP2" ~ "Patient",
+      TRUE ~ "UNK"), .after = contrast)
+
+dat_mri_names <- colnames(dat_mri)
+
+# Filter dataset by hemisphere
+dat_mri_lh <- dat_mri[, grepl("LH", colnames(dat_mri)) | colnames(dat_mri) %in% c("subj", "visit", "group")]
+
+dat_mri_rh <- dat_mri[, grepl("RH", colnames(dat_mri)) | colnames(dat_mri) %in% c("subj", "visit", "group")]
+
+# this is wrong! schaefer400 <- data.frame(parcelname = colnames(dat_mri), parcelnum = c((1:57), (1:400)))
+parcelname <- read.table("~/Documents/2024 Fall/OHBM 2025/schaefer400NodeNames.txt")
+colnames(parcelname)[1] <- "parcelname"
+schaefer400 <- data.frame(parcelname = parcelname, parcelnum = c (1:400))
+
+# save list of mri subject IDs
+mri_sample_subjx <- unique(dat_mri$subj)
+mri_sample_subjx <- as.data.frame(mri_sample_subjx)
+colnames(mri_sample_subjx)[1] = "subj"
+# write.csv(mri_sample_subjx,file=paste0("/Users/arend103/Documents/umn_work/topx_analyses/topx_mri_ddm/topx_mri_sample_subjx_",gsub("-", "", Sys.Date()), ".csv"), row.names = FALSE)
+```
+
+# read in DDM data
+```{r}
+dat_all_ddm <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/data_20240920/TOPX_ddm_fullmerge_20240920.csv")
+colnames(dat_all_ddm)[1] = "subj"
+
+# filter out SP1051, which does not have all parameters at BL2
+dat_all_ddm <- filter(dat_all_ddm, subj != "SP1051")
+
+setdiff(dat_all_ddm$subj, dat_mri$subj) # in DDM not MRI
+setdiff(dat_mri$subj, dat_all_ddm$subj) # in MRI not DDM
+
+# subset DDM by available MRI data
+dat_all_ddm <- subset(dat_all_ddm, subj %in% mri_sample_subjx$subj)
+
+# subset MRI by available DDM data
+dat_mri <- subset(dat_mri, subj %in% dat_all_ddm$subj)
+
+# create set for each timepoint
+dat_bl1_ddm <- filter(dat_all_ddm, visit == "BL1")
+# dat_bl2_ddm <- filter(dat_all_ddm, visit == "BL2")
+
+# subset by available MRI data
+dat_bl1_ddm <- subset(dat_bl1_ddm, subj %in% mri_sample_subjx$subj)
+
+### BL1 DDM LMER
+dat_bl1_ddm_v <- filter(dat_bl1_ddm, dat_bl1_ddm$parameter == "v")
+
+mod_v <- lmer(mean ~ group * cttype + (1|subj), data = dat_bl1_ddm_v)
+anova(mod_v, type = 3)
+
+# descriptives - means by group 
+#v_desc <- 
+  dat_bl1_ddm_v %>%
+  group_by(group, cttype) %>%
+  summarise(mean = mean(mean), na.rm = TRUE)
+  
+# save list of DDM+MRI subject IDs
+mri_ddm_sample_subjx <- unique(dat_bl1_ddm$subj)
+mri_ddm_sample_subjx <- as.data.frame(mri_ddm_sample_subjx)
+colnames(mri_ddm_sample_subjx)[1] = "subj"
+```
+
+# read in TOPX data
+```{r}
+dat_topx <- read.csv("~/Documents/umn_work/topx_analyses/data/aggregated_data_20240802.csv")
+colnames(dat_topx)[15] <- "group"
+colnames(dat_topx)[7] <- "cttype"
+# subset by available MRI data
+dat_topx <- subset(dat_topx, subj %in% mri_ddm_sample_subjx$subj)
+
+## Baseline 1
+dat_bl1_topx <- dat_topx %>% 
+  filter(visit == "BL1") 
+
+# ## Baseline 2
+# dat_bl2_topx <- dat_topx %>% 
+#   filter(visit == "BL2") 
+# 
+# ## match BL1 to BL2 TOPX 
+# dat_bl1_topx <- subset(dat_bl1_topx, (subj %in% dat_bl2_topx$subj))
+# dat_bl2_topx<- subset(dat_bl2_topx, (subj %in% dat_bl1_topx$subj))
+# 
+# ## merge TOPX data
+# dat_all_topx <- rbind(dat_bl1_topx, dat_bl2_topx)
+# dat_all_topx$subj_idx <- dat_all_topx$subj
+
+### BL 1 Error LMER
+mod_err <- lmer(error ~ group * cttype + (1|subj), data = dat_bl1_topx)
+anova(mod_err, type = 3)
+# significant, but not appropriate - need random effect
+# mod_err <- lm(error ~ group * cttype, data = dat_bl1_topx)
+# anova(mod_err)
+# tried t-test but not significant - ugh this sample is so small!
+dat_bl1_topx_bx <- filter(dat_bl1_topx, dat_bl1_topx$cttype == "BX")
+t.test(error ~ group, dat_bl1_topx_bx)
+
+# descriptives - means by group 
+#err_desc <- 
+  dat_bl1_topx %>%
+  group_by(group, cttype) %>%
+  summarise(error = mean(error), na.rm = TRUE)
+
+### BL1 RT LMER
+mod_rt <- lmer(rt_mdn ~ group * cttype + (1|subj), data = dat_bl1_topx)
+anova(mod_rt, type = 3)
+
+```
+
+# read in demographics
+```{r}
+dat_demo <- read.csv("~/Documents/umn_work/topx_analyses/data/nontask_data/demographics/step_demographics_dx_20241101.csv")
+
+## function to remove test cases, fix name formatting -------
+clean_data <- function(data) {
+  # rename subject id as "subj"
+  data <- data %>% rename(subj = record_id)
+  # identify test rows and filter them out
+  ex_strings <- c('TEST', "Test", "test", "NDAR", "archive")
+  dat_probs <- data[grep(paste(ex_strings, collapse='|'), 
+                         data$subj, ignore.case = TRUE), ]
+  data <- data[!data$subj %in% dat_probs$subj, ]
+  # remove the "proofpoint" string from subj ids
+  data$subj <- gsub('PROOFPOINT|-|[*]','', data$subj)
+  # trim white spaces
+  data$subj <- trimws(data$subj)
+  return(as.data.frame(data))
+}
+
+dat_demo <- clean_data(dat_demo)
+
+# subset by available DDM+MRI data
+dat_demo <- subset(dat_demo, subj %in% mri_ddm_sample_subjx$subj)
+```
+
+# subset MRI data
+## Bryon's edit LH
+```{r}
+# recommended from Google: 
+# 137, 140, 141, 142, 148, 182, and 186
+# Left_ContB_IPL_2, Left_ContB_PFClv_1, Left_ContB_PFClv_2, Left_ContB_PFClv_3, Left_ContC_Cingp_2, Left_DefaultB_PFCl_2, Left_DefaultB_PFCv_4
+# mapped using: https://github.com/brainspaces/schaefer400/blob/master/schaefer400NodeNames.txt
+
+dat_dlPFC_LH_Bryon <- dat_mri %>%
+  select("subj", "visit", "group", "LH_ContB_IPL_2",
+         "LH_ContB_PFClv_1",
+         "LH_ContB_PFClv_2",
+         "LH_ContB_PFClv_3",
+         "LH_ContC_Cingp_2",
+         "LH_DefaultB_PFCl_2",
+         "LH_DefaultB_PFCv_4")
+
+# descriptives - means by group 
+dat_dlPFC_LH_Bryon %>%
+  group_by(group) %>%
+  summarise(
+    LH_ContB_IPL_2 = mean(LH_ContB_IPL_2, 
+                               na.rm = TRUE),
+    LH_ContB_PFClv_1 = mean(LH_ContB_PFClv_1,
+                                  na.rm = TRUE),
+    LH_ContB_PFClv_2 = mean(LH_ContB_PFClv_2,
+                                 na.rm = TRUE),
+    LH_ContB_PFClv_3 = mean(LH_ContB_PFClv_3,
+                            na.rm = TRUE),
+    LH_ContC_Cingp_2 = mean(LH_ContC_Cingp_2,
+                            na.rm = TRUE),
+    LH_DefaultB_PFCl_2 = mean(LH_DefaultB_PFCl_2,
+                              na.rm = TRUE),
+    LH_DefaultB_PFCv_4 = mean(LH_DefaultB_PFCv_4,
+                              na.rm = TRUE))
+
+# combine all parcels into one dlPFC variable
+dat_dlPFC_LH_Bryon$LH_PFCdl <- rowSums(dat_dlPFC_LH_Bryon[, c("LH_ContB_IPL_2", "LH_ContB_PFClv_1", "LH_ContB_PFClv_2", "LH_ContB_PFClv_3", "LH_ContC_Cingp_2", "LH_DefaultB_PFCl_2", "LH_DefaultB_PFCv_4")]) / 7
+
+# compare group means
+dat_dlPFC_LH_Bryon %>%
+  group_by(group) %>%
+  summarise(LH_PFCdl = mean(LH_PFCdl, na.rm = TRUE))
+
+t.test(LH_PFCdl ~ group, data = dat_dlPFC_LH_Bryon)
+```
+## Bryon's edit RH
+```{r}
+# recommended from Google: 
+# 137, 140, 141, 142, 148, 182, and 186
+
+dat_dlPFC_RH_Bryon <- dat_mri %>%
+  select("subj", "visit", "group", "RH_ContB_IPL_2",
+         "RH_ContB_PFClv_1",
+         "RH_ContB_PFClv_2",
+         "RH_ContB_PFClv_3",
+         "RH_ContC_Cingp_2")
+
+# descriptives - means by group 
+dat_dlPFC_RH_Bryon %>%
+  group_by(group) %>%
+  summarise(
+    RH_ContB_IPL_2 = mean(RH_ContB_IPL_2, 
+                               na.rm = TRUE),
+    RH_ContB_PFClv_1 = mean(RH_ContB_PFClv_1,
+                                  na.rm = TRUE),
+    RH_ContB_PFClv_2 = mean(RH_ContB_PFClv_2,
+                                 na.rm = TRUE),
+    RH_ContB_PFClv_3 = mean(RH_ContB_PFClv_3,
+                            na.rm = TRUE),
+    RH_ContC_Cingp_2 = mean(RH_ContC_Cingp_2,
+                            na.rm = TRUE))
+# dropped last two parcels bc they don't exist in RH!
+
+# combine all parcels into one dlPFC variable
+dat_dlPFC_RH_Bryon$RH_PFCdl <- rowSums(dat_dlPFC_RH_Bryon[, c("RH_ContB_IPL_2", "RH_ContB_PFClv_1", "RH_ContB_PFClv_2", "RH_ContB_PFClv_3", "RH_ContC_Cingp_2")]) / 5
+
+# compare group means
+dat_dlPFC_RH_Bryon %>%
+  group_by(group) %>%
+  summarise(RH_PFCdl = mean(RH_PFCdl, na.rm = TRUE))
+
+t.test(RH_PFCdl ~ group, data = dat_dlPFC_RH_Bryon)
+```
+
+## guess 1- all topographic networks
+```{r}
+# BA 9 and 46 = Control A, Default A, Default B,  DorsalAttn A
+# Per MacDonald 2000:  left DLPFC (BA 9; Talairach coordinates x = –41, y = 18,z = 28; maximum F = 7.14; 36 pixels)
+
+dat_dlPFC_v1 <- dat_mri %>%
+  select("subj", "visit", "group", "LH_DorsAttnA_TempOcc_1","LH_DorsAttnA_TempOcc_2",
+"LH_DorsAttnA_TempOcc_3", "LH_DorsAttnA_TempOcc_4",
+"LH_DorsAttnA_ParOcc_1", "LH_DorsAttnA_ParOcc_2",
+"LH_DorsAttnA_SPL_1", "LH_DorsAttnA_SPL_2",
+"LH_DorsAttnA_SPL_3", "LH_DorsAttnA_SPL_4",
+"LH_DorsAttnA_SPL_5", "LH_DorsAttnA_SPL_6",
+"LH_DorsAttnA_SPL_7",
+"RH_DorsAttnA_TempOcc_1", "RH_DorsAttnA_TempOcc_2",
+"RH_DorsAttnA_TempOcc_3", "RH_DorsAttnA_ParOcc_1",
+"RH_DorsAttnA_ParOcc_2", "RH_DorsAttnA_ParOcc_3",
+"RH_DorsAttnA_SPL_1", "RH_DorsAttnA_SPL_2",
+"RH_DorsAttnA_SPL_3", "RH_DorsAttnA_SPL_4",
+"RH_DorsAttnA_SPL_5", "RH_DorsAttnA_SPL_6",
+"RH_DorsAttnA_SPL_7", "RH_DorsAttnA_SPL_8",
+"LH_ContA_Temp_1", "LH_ContA_IPS_1", "LH_ContA_IPS_2",
+"LH_ContA_IPS_3", "LH_ContA_IPS_4", "LH_ContA_IPS_5",
+"LH_ContA_PFCd_1", "LH_ContA_PFClv_1", "LH_ContA_PFClv_2",
+"LH_ContA_PFCl_1", "LH_ContA_PFCl_2", "LH_ContA_PFCl_3", 
+"LH_ContA_Cingm_1",
+"RH_ContA_IPS_1", "RH_ContA_IPS_2", "RH_ContA_IPS_3",
+"RH_ContA_IPS_4", "RH_ContA_PFCd_1", "RH_ContA_PFCl_1",
+"RH_ContA_PFCl_2", "RH_ContA_PFCl_3", "RH_ContA_PFCl_4",
+"RH_ContA_PFCl_5", "RH_ContA_Cingm_1",
+"LH_DefaultA_IPL_1", "LH_DefaultA_IPL_2",
+"LH_DefaultA_PFCd_1", "LH_DefaultA_PFCd_2",
+"LH_DefaultA_PFCd_3", "LH_DefaultA_pCunPCC_1",
+"LH_DefaultA_pCunPCC_2", "LH_DefaultA_pCunPCC_3", 
+"LH_DefaultA_pCunPCC_4", "LH_DefaultA_pCunPCC_5",
+"LH_DefaultA_pCunPCC_6", "LH_DefaultA_pCunPCC_7",
+"LH_DefaultA_PFCm_1", "LH_DefaultA_PFCm_2",
+"LH_DefaultA_PFCm_3", "LH_DefaultA_PFCm_4",
+"LH_DefaultA_PFCm_5", "LH_DefaultA_PFCm_6",
+"RH_DefaultA_Temp_1", "RH_DefaultA_IPL_1",
+"RH_DefaultA_IPL_2", "RH_DefaultA_PFCd_1",
+"RH_DefaultA_PFCd_2", "RH_DefaultA_pCunPCC_1",
+"RH_DefaultA_pCunPCC_2", "RH_DefaultA_pCunPCC_3",
+"RH_DefaultA_pCunPCC_4", "RH_DefaultA_pCunPCC_5",
+"RH_DefaultA_PFCm_1", "RH_DefaultA_PFCm_2",
+"RH_DefaultA_PFCm_3", "RH_DefaultA_PFCm_4",
+"RH_DefaultA_PFCm_5", "RH_DefaultA_PFCm_6",
+"LH_DefaultB_Temp_1", "LH_DefaultB_Temp_2",
+"LH_DefaultB_Temp_3", "LH_DefaultB_Temp_4", 
+"LH_DefaultB_Temp_5", "LH_DefaultB_Temp_6",
+"LH_DefaultB_IPL_1", "LH_DefaultB_IPL_2",
+"LH_DefaultB_PFCd_1", "LH_DefaultB_PFCd_2",
+"LH_DefaultB_PFCd_3", "LH_DefaultB_PFCd_4",
+"LH_DefaultB_PFCd_5", "LH_DefaultB_PFCd_6",
+"LH_DefaultB_PFCl_1", "LH_DefaultB_PFCl_2",
+"LH_DefaultB_PFCv_1", "LH_DefaultB_PFCv_2",
+"LH_DefaultB_PFCv_3", "LH_DefaultB_PFCv_4",
+"LH_DefaultB_PFCv_5",
+"RH_DefaultB_Temp_1", "RH_DefaultB_Temp_2",
+"RH_DefaultB_AntTemp_1", "RH_DefaultB_PFCd_1",
+"RH_DefaultB_PFCd_2", "RH_DefaultB_PFCd_3",
+"RH_DefaultB_PFCd_4", "RH_DefaultB_PFCd_5",
+"RH_DefaultB_PFCv_1", "RH_DefaultB_PFCv_2", 
+"RH_DefaultB_PFCv_3")
+
+# data.frame(colnames(dat_dlPFC_v1))
+
+dat_dlPFC_v1$dlPFC <- rowSums(dat_dlPFC_v1[, c(4:120)])/ 116
+
+# Filter dataset by hemisphere
+dat_dlPFC_v1_lh <- dat_dlPFC_v1[, grepl("LH", colnames(dat_dlPFC_v1)) | colnames(dat_dlPFC_v1) %in% c("subj", "visit", "group")]
+dat_dlPFC_v1_lh$dlPFC_lh <- rowSums(dat_dlPFC_v1_lh[, c(4:68)])/ 64
+
+dat_dlPFC_v1_rh <- dat_dlPFC_v1[, grepl("RH", colnames(dat_dlPFC_v1)) | colnames(dat_dlPFC_v1) %in% c("subj", "visit", "group")]
+dat_dlPFC_v1_rh$dlPFC_rh <- rowSums(dat_dlPFC_v1_rh[, c(4:55)])/ 51
+
+dat_comb <- merge(dat_dlPFC_v1, dat_bl1_ddm_v, by = "subj", all.x = TRUE)
+
+
+```
+
+
+```{r}
+# # DorsalAttn A
+# "LH_DorsAttnA_TempOcc_1","LH_DorsAttnA_TempOcc_2",
+# "LH_DorsAttnA_TempOcc_3", "LH_DorsAttnA_TempOcc_4",
+# "LH_DorsAttnA_ParOcc_1", "LH_DorsAttnA_ParOcc_2",
+# "LH_DorsAttnA_SPL_1", "LH_DorsAttnA_SPL_2",
+# "LH_DorsAttnA_SPL_3", "LH_DorsAttnA_SPL_4",
+# "LH_DorsAttnA_SPL_5", "LH_DorsAttnA_SPL_6",
+# "LH_DorsAttnA_SPL_7"
+# 
+# "RH_DorsAttnA_TempOcc_1", "RH_DorsAttnA_TempOcc_2",
+# "RH_DorsAttnA_TempOcc_3", "RH_DorsAttnA_ParOcc_1",
+# "RH_DorsAttnA_ParOcc_2", "RH_DorsAttnA_ParOcc_3",
+# "RH_DorsAttnA_SPL_1", "RH_DorsAttnA_SPL_2",
+# "RH_DorsAttnA_SPL_3", "RH_DorsAttnA_SPL_4",
+# "RH_DorsAttnA_SPL_5", "RH_DorsAttnA_SPL_6",
+# "RH_DorsAttnA_SPL_7", "RH_DorsAttnA_SPL_8"     
+# 
+# Control A
+# "LH_ContA_Temp_1", "LH_ContA_IPS_1", "LH_ContA_IPS_2",
+# "LH_ContA_IPS_3", "LH_ContA_IPS_4", "LH_ContA_IPS_5",
+# "LH_ContA_PFCd_1", "LH_ContA_PFClv_1", "LH_ContA_PFClv_2",
+# "LH_ContA_PFCl_1", "LH_ContA_PFCl_2", "LH_ContA_PFCl_3", 
+# "LH_ContA_Cingm_1"  
+# 
+# "RH_ContA_IPS_1", "RH_ContA_IPS_2", "RH_ContA_IPS_3",
+# "RH_ContA_IPS_4", "RH_ContA_PFCd_1", "RH_ContA_PFCl_1",
+# "RH_ContA_PFCl_2", "RH_ContA_PFCl_3", "RH_ContA_PFCl_4",
+# "RH_ContA_PFCl_5", "RH_ContA_Cingm_1"
+# 
+# Default A
+# "LH_DefaultA_IPL_1", "LH_DefaultA_IPL_2",
+# "LH_DefaultA_PFCd_1", "LH_DefaultA_PFCd_2",
+# "LH_DefaultA_PFCd_3", "LH_DefaultA_pCunPCC_1",
+# "LH_DefaultA_pCunPCC_2", "LH_DefaultA_pCunPCC_3", 
+# "LH_DefaultA_pCunPCC_4", "LH_DefaultA_pCunPCC_5",
+# "LH_DefaultA_pCunPCC_6", "LH_DefaultA_pCunPCC_7",
+# "LH_DefaultA_PFCm_1", "LH_DefaultA_PFCm_2",
+# "LH_DefaultA_PFCm_3", "LH_DefaultA_PFCm_4",
+# "LH_DefaultA_PFCm_5", "LH_DefaultA_PFCm_6"
+# 
+# "RH_DefaultA_Temp_1", "RH_DefaultA_IPL_1",
+# "RH_DefaultA_IPL_2", "RH_DefaultA_PFCd_1",
+# "RH_DefaultA_PFCd_2", "RH_DefaultA_pCunPCC_1",
+# "RH_DefaultA_pCunPCC_2", "RH_DefaultA_pCunPCC_3",
+# "RH_DefaultA_pCunPCC_4", "RH_DefaultA_pCunPCC_5",
+# "RH_DefaultA_PFCm_1", "RH_DefaultA_PFCm_2",
+# "RH_DefaultA_PFCm_3", "RH_DefaultA_PFCm_4",
+# "RH_DefaultA_PFCm_5", "RH_DefaultA_PFCm_6" 
+# 
+# Default B
+# "LH_DefaultB_Temp_1", "LH_DefaultB_Temp_2",
+# "LH_DefaultB_Temp_3", "LH_DefaultB_Temp_4", 
+# "LH_DefaultB_Temp_5", "LH_DefaultB_Temp_6",
+# "LH_DefaultB_IPL_1", "LH_DefaultB_IPL_2",
+# "LH_DefaultB_PFCd_1", "LH_DefaultB_PFCd_2",
+# "LH_DefaultB_PFCd_3", "LH_DefaultB_PFCd_4",
+# "LH_DefaultB_PFCd_5", "LH_DefaultB_PFCd_6",
+# "LH_DefaultB_PFCl_1", "LH_DefaultB_PFCl_2",
+# "LH_DefaultB_PFCv_1", "LH_DefaultB_PFCv_2",
+# "LH_DefaultB_PFCv_3", "LH_DefaultB_PFCv_4",
+# "LH_DefaultB_PFCv_5"  
+# 
+# "RH_DefaultB_Temp_1", "RH_DefaultB_Temp_2",
+# "RH_DefaultB_AntTemp_1", "RH_DefaultB_PFCd_1",
+# "RH_DefaultB_PFCd_2", "RH_DefaultB_PFCd_3",
+# "RH_DefaultB_PFCd_4", "RH_DefaultB_PFCd_5",
+# "RH_DefaultB_PFCv_1", "RH_DefaultB_PFCv_2", 
+# "RH_DefaultB_PFCv_3"
+
+
+```
+
+## guess 2 - select topographic networks
+
+```{r}
+dat_dlPFC_v2 <- dat_mri %>%
+  select("subj", "visit", "group",
+         
+results <- dat %>%
+  group_by(cttype) %>%
+  do(model = lm(v ~ dlPFC, data = .)) %>%
+  tidy(model) 
+```
+
+## guess 3 - all control networks
+```{r}
+
+dat_dlPFC_v2 <- dat_mri %>%
+  select("subj", "visit", "group",
+
+Control A
+"LH_ContA_Temp_1", "LH_ContA_IPS_1", "LH_ContA_IPS_2",
+"LH_ContA_IPS_3", "LH_ContA_IPS_4", "LH_ContA_IPS_5",
+"LH_ContA_PFCd_1", "LH_ContA_PFClv_1", "LH_ContA_PFClv_2",
+"LH_ContA_PFCl_1", "LH_ContA_PFCl_2", "LH_ContA_PFCl_3", 
+"LH_ContA_Cingm_1"  
+
+"RH_ContA_IPS_1", "RH_ContA_IPS_2", "RH_ContA_IPS_3",
+"RH_ContA_IPS_4", "RH_ContA_PFCd_1", "RH_ContA_PFCl_1",
+"RH_ContA_PFCl_2", "RH_ContA_PFCl_3", "RH_ContA_PFCl_4",
+"RH_ContA_PFCl_5", "RH_ContA_Cingm_1"
+
+Control B
+
+Control C
+
+```
+
+## consensus
+```{r}
+dat_dlPFC_3p <- dat_mri %>%
+  select("subj", "visit", "group", "LH_ContA_PFCd_1", 
+         "LH_ContA_PFClv_1", "LH_ContA_PFClv_2",
+         "LH_ContA_PFCl_1", "LH_ContA_PFCl_2",
+         "LH_ContA_PFCl_3") 
+
+dat_dlPFC_3p$dlPFC <- rowSums(dat_dlPFC_3p[, c(4:9)])/ 6
+
+t.test(dlPFC ~ group, dat_dlPFC_3p)
+
+# descriptives - means by group 
+dat_dlPFC_3p %>%
+  group_by(group) %>%
+  summarise(
+    LH_ContA_PFCd_1 = mean(LH_ContA_PFCd_1, 
+                               na.rm = TRUE),
+    LH_ContA_PFClv_1 = mean(LH_ContA_PFClv_1,
+                                  na.rm = TRUE),
+    LH_ContA_PFClv_2 = mean(LH_ContA_PFClv_2,
+                                 na.rm = TRUE),
+    LH_ContA_PFCl_1 = mean(LH_ContA_PFCl_1,
+                            na.rm = TRUE),
+    LH_ContA_PFCl_2 = mean(LH_ContA_PFCl_2,
+                            na.rm = TRUE),
+    LH_ContA_PFCl_3 = mean(LH_ContA_PFCl_3,
+                              na.rm = TRUE))
+
+dat_comb <- merge(dat_dlPFC_3p, dat_bl1_ddm_v, by = c("subj", "visit", "group"), all.x = TRUE)
+
+# dat_comb %>%
+#   group_by(cttype) %>%
+#   nest() %>%
+#   mutate(
+#     model = map(data, ~ lm(mean ~ dlPFC * group, data = .x)),
+#     tidied = map(model, tidy)                         
+#   ) %>%
+#   unnest(tidied)
+
+# run LMER with all cttypes
+mod_all <- lmer(mean ~ dlPFC * cttype * group + (1|subj), data = dat_comb)
+anova(mod_all, type = 3)
+print(emmeans(mod_all, list(pairwise ~ cttype), adjust = "mvt"))
+
+dlPFC_center <- mean(dat_comb$dlPFC, na.rm = TRUE)
+# Pairwise comparisons
+emm <- emmeans(mod_all, ~ group * cttype | dlPFC, at = list(dlPFC = dlPFC_center))
+# Contrast comparisons
+pairs(emm)
+
+
+# run LM with all cttypes
+mod_all2 <- lm(mean ~ dlPFC * cttype * group, data = dat_comb)
+anova(mod_all2)
+
+# LMs separated by trial type
+dat_comb_ax <- filter(dat_comb, cttype == "AX")
+dat_comb_ay <- filter(dat_comb, cttype == "AY")
+dat_comb_bx <- filter(dat_comb, cttype == "BX")
+dat_comb_by <- filter(dat_comb, cttype == "BY")
+
+mod_ax <- lm(mean ~ dlPFC * group, data = dat_comb_ax)
+anova(mod_ax)
+print(emmeans(mod_ax, list(pairwise ~ group), adjust = "mvt"))
+cor.test(dat_comb_ax$mean, dat_comb_ax$dlPFC)
+
+mod_ay <- lm(mean ~ dlPFC * group, data = dat_comb_ay)
+anova(mod_ay)
+
+mod_bx <- lm(mean ~ dlPFC * group, data = dat_comb_bx)
+anova(mod_bx)
+
+mod_by <- lm(mean ~ dlPFC * group, data = dat_comb_by)
+anova(mod_by)
+
+# patients only
+dat_comb_ax_pt <- filter(dat_comb_ax, group == "Patient")
+mod_ax_2 <- lm(mean ~ dlPFC, data = dat_comb_ax_pt)
+anova(mod_ax_2)
+
+# symptom relationships
+cor.test(dat_comb_ax_pt$dlPFC, dat_comb_ax_pt$bprs_neg)
+cor.test(dat_comb_ax_pt$dlPFC, dat_comb_ax_pt$bprs_disorg)
+cor.test(dat_comb_ax_pt$dlPFC, dat_comb_ax_pt$bprs_pos)
+cor.test(dat_comb_ax_pt$dlPFC, dat_comb_ax_pt$gfr)
+
+```
+
+# GOAL: linear regression to test if dlPFC activation predicts DR
+More specifically, we 1) examined DRs associated with all trial types during this task, as well as cognitive control–associated DR, 2) recapitulated previously observed deficits in DLPFC activation during cognitive control in SZ, and 3) used linear regression to examine the extent to which DLPFC activation predicts DR in SZ and healthy control (HC) participants.
