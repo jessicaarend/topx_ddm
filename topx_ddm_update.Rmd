@@ -157,7 +157,7 @@ dat_topx_all <- subset(dat_topx_all, (subj_idx %in% dat_ddm_all$subj_idx))
 
 ## load behav data
 ```{r}
-dat_behav <- read.csv("data/step_behav_dat_20250125.csv")
+dat_behav <- read.csv("data/step_behav_dat_20250222.csv")
 colnames(dat_behav)[1] <- "subj_idx"
 ```
 
@@ -584,13 +584,13 @@ dat_ddm_behav <- reformat_ddm_var(dat_ddm_behav)
 #write.csv(dat_ddm_behav,file=paste0("/Users/arend103/Documents/UMN Work & General/TOPX analyses/mri ddm data/TOPX_ddm_behav_",gsub("-", "", Sys.Date()), ".csv"), row.names = FALSE)
 
 # subset data by parameter ---------------------
-v_dat_all = subset(dat_ddm_behav, parameter == 'v')
+v_dat_all = filter(dat_ddm_behav, parameter == 'v')
 
-a_dat_all = subset(dat_ddm_behav, parameter == 'a')
+a_dat_all = filter(dat_ddm_behav, parameter == 'a')
 
-t_dat_all = subset(dat_ddm_behav, parameter == 't')
+t_dat_all = filter(dat_ddm_behav, parameter == 't')
 
-z_dat_all= subset(dat_ddm_behav, parameter == 'z') 
+z_dat_all= filter(dat_ddm_behav, parameter == 'z') 
 # z_dat_all_trans <- z_dat_all %>%  mutate(mean = mean*(-1))
 
 ### DDM descriptives ----------
@@ -698,7 +698,7 @@ lmer_plot_sep(z_dat_all, "Degrees of Bias",
 ```
 
 # correlations - 14 param
-## ddm matrix - all data
+## ddm matrix - all
 ```{r}
 # filter ddm data (long form) to only include ddm variables, for correlation matrix
 dat_cor_all <- dat_ddm_all_long %>% 
@@ -817,49 +817,88 @@ dat_cor_bl2_intc <- cor(dat_cor_bl2_intc)
 corrplot(dat_cor_bl2_intc, method = "color", addCoef.col = 'white')
 ```
 
-## ddm corr matrix - bl1
+# clinical sxs & ddm
 ```{r}
+# write function for correlations
+cor_sxs <- function(dat, var) {
+  cor.test(dat$mean, dat[[var]], method = "spearman")
+}
 
-```
+# filter data to include drift rate only
+v_dat_all_pt = filter(dat_ddm_behav, parameter == 'v' & group == "Patient")
 
-## ddm corr matrix - bl2
-```{r}
-
-```
-
-
-# clinical symptoms
-```{r}
-v_dat_all_pt = subset(dat_ddm_behav, parameter == 'v' & group == "Patient")
-
+# create subsets for v-AX
 v_dat_all_pt_AX <- filter(v_dat_all_pt, cttype == "AX")
-v_dat_all_pt_BX <- filter(v_dat_all_pt, cttype == "BX")
+v_dat_BL1_pt_AX <- filter(v_dat_all_pt, cttype == "AX" & visit == "BL1")
+v_dat_BL2_pt_AX <- filter(v_dat_all_pt, cttype == "AX" & visit == "BL2")
 
+# create subsets for v-BX
+v_dat_all_pt_BX <- filter(v_dat_all_pt, cttype == "BX")
+v_dat_BL1_pt_BX <- filter(v_dat_all_pt, cttype == "BX" & visit == "BL1")
+v_dat_BL2_pt_BX <- filter(v_dat_all_pt, cttype == "BX" & visit == "BL2")
+
+# create subsets for v-BY
+v_dat_all_pt_BY <- filter(v_dat_all_pt, cttype == "BY")
+v_dat_BL1_pt_BY <- filter(v_dat_all_pt, cttype == "BY" & visit == "BL1")
+v_dat_BL2_pt_BY <- filter(v_dat_all_pt, cttype == "BY" & visit == "BL2")
+```
+
+```{r}
 # v-AX - BPRS
-cor.test(v_dat_all_pt_AX$mean, v_dat_all_pt_AX$bprs_pos_ws, method = "spearman")
-cor.test(v_dat_all_pt_AX$mean, v_dat_all_pt_AX$bprs_neg_ws, method = "spearman")
-cor.test(v_dat_all_pt_AX$mean, v_dat_all_pt_AX$bprs_disorg_ws, method = "spearman")
+cor_sxs(v_dat_all_pt_AX, "bprs_pos_ws")
+cor_sxs(v_dat_all_pt_AX, "bprs_neg_ws")
+cor_sxs(v_dat_all_pt_AX, "bprs_disorg_ws")
+cor_sxs(v_dat_all_pt_AX, "bprs_dep_anx_ws")
+cor_sxs(v_dat_all_pt_AX, "bprs_mania_ws")
+# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+cor_sxs(v_dat_BL1_pt_BX, "bprs_neg_ws")
+cor_sxs(v_dat_BL2_pt_AX, "bprs_neg_ws")
 
 # v-BX - BPRS
-cor.test(v_dat_all_pt_BX$mean, v_dat_all_pt_BX$bprs_pos_ws, method = "spearman")
-cor.test(v_dat_all_pt_BX$mean, v_dat_all_pt_BX$bprs_neg_ws, method = "spearman")
-cor.test(v_dat_all_pt_BX$mean, v_dat_all_pt_BX$bprs_disorg_ws, method = "spearman")
+cor_sxs(v_dat_all_pt_BX, "bprs_pos_ws")
+cor_sxs(v_dat_all_pt_BX, "bprs_neg_ws")
+cor_sxs(v_dat_all_pt_BX, "bprs_disorg_ws")
+cor_sxs(v_dat_all_pt_BX, "bprs_dep_anx_ws")
+cor_sxs(v_dat_all_pt_BX, "bprs_mania_ws")
+# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+cor_sxs(v_dat_BL1_pt_BX, "bprs_neg_ws")
+cor_sxs(v_dat_BL2_pt_BX, "bprs_neg_ws")
 
-# # v-AX - SANS-SAPS
-# cor.test(v_dat_all_pt_AX$mean, v_dat_all_pt_AX$sanssaps_pos_tib2, method = "spearman")
-# cor.test(v_dat_all_pt_AX$mean, v_dat_all_pt_AX$sanssaps_neg_tib2, method = "spearman")
-# cor.test(v_dat_all_pt_AX$mean, v_dat_all_pt_AX$sanssaps_disorg_tib2, method = "spearman")
-# 
-# # v-BX - SANS-SAPS
-# cor.test(v_dat_all_pt_BX$mean, v_dat_all_pt_BX$sanssaps_pos_tib2, method = "spearman")
-# cor.test(v_dat_all_pt_BX$mean, v_dat_all_pt_BX$sanssaps_neg_tib2, method = "spearman")
-# cor.test(v_dat_all_pt_BX$mean, v_dat_all_pt_BX$sanssaps_disorg_tib2, method = "spearman")
+# v-BY - BPRS
+cor_sxs(v_dat_all_pt_BY, "bprs_pos_ws")
+cor_sxs(v_dat_all_pt_BY, "bprs_neg_ws")
+cor_sxs(v_dat_all_pt_BY, "bprs_disorg_ws")
+cor_sxs(v_dat_all_pt_BY, "bprs_dep_anx_ws")
+cor_sxs(v_dat_all_pt_BY, "bprs_mania_ws")
+# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+cor_sxs(v_dat_BL1_pt_BY, "bprs_neg_ws")
+cor_sxs(v_dat_BL2_pt_BY, "bprs_neg_ws")
+```
 
-v_dat_BL1_pt_AX <- filter(v_dat_all_pt, cttype == "AX" & visit == "BL1")
-cor.test(v_dat_BL1_pt_AX$mean, v_dat_BL1_pt_AX$bprs_disorg_ws, method = "spearman")
+```{r}
+# v-AX - SANS-SAPS
+cor_sxs(v_dat_all_pt_AX, "sanssaps_pos_tib2")
+cor_sxs(v_dat_all_pt_AX, "sanssaps_neg_tib2")
+cor_sxs(v_dat_all_pt_AX, "sanssaps_disorg_tib2")
+# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+cor_sxs(v_dat_BL1_pt_AX, "sanssaps_neg_tib2")
+cor_sxs(v_dat_BL2_pt_AX, "sanssaps_neg_tib2")
 
-v_dat_BL1_pt_BX <- filter(v_dat_all_pt, cttype == "BX" & visit == "BL1")
-cor.test(v_dat_BL1_pt_BX$mean, v_dat_BL1_pt_BX$bprs_neg_ws, method = "spearman")
+# v-BX - SANS-SAPS
+cor_sxs(v_dat_all_pt_BX, "sanssaps_pos_tib2")
+cor_sxs(v_dat_all_pt_BX, "sanssaps_neg_tib2")
+cor_sxs(v_dat_all_pt_BX, "sanssaps_disorg_tib2")
+# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+cor_sxs(v_dat_BL1_pt_BX, "sanssaps_neg_tib2")
+cor_sxs(v_dat_BL2_pt_BX, "sanssaps_neg_tib2")
+
+# # v-BY - SANS-SAPS
+cor_sxs(v_dat_all_pt_BY, "sanssaps_pos_tib2")
+cor_sxs(v_dat_all_pt_BY, "sanssaps_neg_tib2")
+cor_sxs(v_dat_all_pt_BY, "sanssaps_disorg_tib2")
+# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+cor_sxs(v_dat_BL1_pt_BY, "sanssaps_neg_tib2")
+cor_sxs(v_dat_BL2_pt_BY, "sanssaps_neg_tib2")
 
 
 plot_vbx_neg <- ggplot(v_dat_BL1_pt_BX, aes(x = bprs_neg_ws, y = mean, color = group)) +
@@ -881,7 +920,7 @@ plot_vbx_neg <- ggplot(v_dat_BL1_pt_BX, aes(x = bprs_neg_ws, y = mean, color = g
           plot.title = element_text(face = "bold", size = 22))
 plot_vbx_neg
 
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_vBX_BPRSneg.png"), plot_vbx_neg, width = 6, height = 4)
+#ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_vBX_BPRSneg.png"), plot_vbx_neg, width = 6, height = 4)
 
 ```
 
