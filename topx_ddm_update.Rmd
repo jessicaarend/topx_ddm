@@ -607,27 +607,27 @@ ddmTable
 ## run plots -----------
 # v - all data
 lmer_plot_comb(v_dat_all, "Drift Rates", 
-           "Drift Rate (v)", 0.5, 3.5, posthoc = TRUE)
+           "Drift Rate (v)", 0.7, 3, posthoc = TRUE)
 ```
 
 # drift rate sep
 ```{r}
 lmer_plot_sep(v_dat_all, 
                 "Drift Rates", 
-                 "Drift Rate (v)", 0.5, 3.5, posthoc = TRUE)
+                 "Drift Rate (v)", 0.7, 3, posthoc = TRUE)
 ```
 
 ## decision threshold comb
 ```{r}
 # a - all data
 lmer_plot_comb(a_dat_all, "Decision Thresholds", 
-           "Decision Threshold (a)", 0.4, 0.7, posthoc = TRUE) 
+           "Decision Threshold (a)", 0.47, 0.63, posthoc = TRUE) 
 ```
 
 ## decision threshold sep
 ```{r}
 lmer_plot_sep(a_dat_all, "Decision Thresholds",
-                 "Decision Threshold (a)", 0.4, 0.7, posthoc = TRUE) 
+                 "Decision Threshold (a)", 0.47, 0.63, posthoc = TRUE) 
 ```
 
 ### investigate age
@@ -655,13 +655,13 @@ anova(mod_a_Age)
 ```{r}
 # t - all data
 lmer_plot_comb(t_dat_all, "Non-Decision Times", 
-           "Non-Decision Time (t)", 0.15, 0.30, posthoc = TRUE) 
+           "Non-Decision Time (t)", 0.17, 0.25, posthoc = TRUE) 
 ```
 
 ## non-decision time sep
 ```{r}
 lmer_plot_sep(t_dat_all, "Non-Decision Times", 
-                 "Non-Decision Time (t)", 0.15, 0.30, posthoc = TRUE)
+                 "Non-Decision Time (t)", 0.17, 0.25, posthoc = TRUE)
 ```
 
 ### investigate age
@@ -682,13 +682,13 @@ t.test(t_dat_all$age_split, t_dat_all$mean, na.rm = TRUE)
 ```{r}
 # z - all data
 lmer_plot_comb(z_dat_all, "Degrees of Bias", 
-           "Degree of Bias (w)", 0.4, 0.7, posthoc = TRUE) 
+           "Degree of Bias (w)", 0.5, 0.65, posthoc = TRUE) 
 ```
 
 # bias sep
 ```{r}
 lmer_plot_sep(z_dat_all, "Degrees of Bias", 
-                 "Degree of Bias (w)", 0.4, 0.7, posthoc = TRUE)
+                 "Degree of Bias (w)", 0.5, 0.65, posthoc = TRUE)
 
 # investigate gender
 # z_dat_all_trans$gender <- as.factor(z_dat_all_trans$gender)
