@@ -21,7 +21,7 @@ pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, M
 # Custom function to read, select, and join datasets
 process_data <- function(block, types, column_mappings) {
   datasets <- lapply(types, function(type) {
-    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
     read.csv(file_path) %>%
       select(all_of(column_mappings[[type]]))
   })
