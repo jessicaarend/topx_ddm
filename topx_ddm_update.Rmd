@@ -118,7 +118,7 @@ dat_ddm_all <- dat_ddm_all %>%
 ## load TOPX data
 ```{r}
 ### TOPX data ----------
-dat_topx <- read.csv("../topx_mri_clean/aggregate_data/aggregate_topx_20250125.csv")
+dat_topx <- read.csv("../topx_clean/aggregate_data/aggregate_topx_20250125.csv")
 
 # clean and rename
 dat_topx[dat_topx == "BL1.5"] <- "BL1"
@@ -744,7 +744,7 @@ corrplot(dat_cor_bl2, method = "color", addCoef.col = 'white')
 # Custom function to read, select, and join datasets
 process_data_intc <- function(block, types, column_mappings) {
   datasets <- lapply(types, function(type) {
-    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
     read.csv(file_path) %>%
       select(all_of(column_mappings[[type]])) %>%
       rename(!!paste0(type, "_ppt") := participant)

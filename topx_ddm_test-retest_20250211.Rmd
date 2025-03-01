@@ -17,7 +17,7 @@ pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, M
 
 # Read/reformat TOPX data
 ```{r}
-dat_topx <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_clean/aggregate_data/aggregate_topx_20250125.csv")
+dat_topx <- read.csv("~/Documents/umn_work/topx_analyses/topx_clean/aggregate_data/aggregate_topx_20250125.csv")
 
 dat_topx[dat_topx == "BL1.5"] <- "BL1"
 dat_topx[dat_topx == "BL2.5"] <- "BL2"
@@ -48,7 +48,7 @@ dat_all_topx$subj_idx <- dat_all_topx$subj
 
 ## optional: filter dat behav by another dataset
 ```{r}
-ddm_sample_subjx <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/topx_ddm_sample_subjx_20250125.csv")
+ddm_sample_subjx <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/topx_ddm_sample_subjx_20250125.csv")
 dat_all_topx <- subset(dat_all_topx, subj %in% ddm_sample_subjx$subj)
 ```
 
@@ -591,7 +591,7 @@ print(cor_table_topx_d)
 # Custom function to read, select, and join datasets
 process_data <- function(block, types, column_mappings) {
   datasets <- lapply(types, function(type) {
-    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
     read.csv(file_path) %>%
       select(all_of(column_mappings[[type]]))
   })
@@ -655,35 +655,35 @@ dat_bl2_ddm_rev <- filter(dat_ddm_all, visit == "BL2")
 
 ```{r}
 # read in separate stats for bl1 and bl2, merge them - long form
-# dat_ddm_bl1_v <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl1/stats_v.csv")
+# dat_ddm_bl1_v <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl1/stats_v.csv")
 # dat_ddm_bl1_v <- dat_ddm_bl1_v %>%
 #   select(participant_id, v_ax, v_ay, v_bx, v_by)
 # 
-# dat_ddm_bl1_a <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl1/stats_a.csv")
+# dat_ddm_bl1_a <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl1/stats_a.csv")
 # dat_ddm_bl1_a <- dat_ddm_bl1_a %>%
 #   select(participant_id, a_ax, a_ay, a_bx, a_by)
 # 
-# dat_ddm_bl1_t <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl1/stats_t.csv")
+# dat_ddm_bl1_t <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl1/stats_t.csv")
 # dat_ddm_bl1_t <- dat_ddm_bl1_t %>%
 #   select(participant_id, t_ax, t_ay, t_bx, t_by)
 # 
-# dat_ddm_bl1_z <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl1/stats_z.csv")
+# dat_ddm_bl1_z <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl1/stats_z.csv")
 # dat_ddm_bl1_z <- dat_ddm_bl1_z %>%
 #   select(participant_id, z_a, z_b)
 # 
-# dat_ddm_bl2_v <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl2/stats_v.csv")
+# dat_ddm_bl2_v <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl2/stats_v.csv")
 # dat_ddm_bl2_v <- dat_ddm_bl2_v %>%
 #   select(participant_id, v_ax, v_ay, v_bx, v_by)
 # 
-# dat_ddm_bl2_a <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl2/stats_a.csv")
+# dat_ddm_bl2_a <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl2/stats_a.csv")
 # dat_ddm_bl2_a <- dat_ddm_bl2_a %>%
 #   select(participant_id, a_ax, a_ay, a_bx, a_by)
 # 
-# dat_ddm_bl2_t <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl2/stats_t.csv")
+# dat_ddm_bl2_t <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl2/stats_t.csv")
 # dat_ddm_bl2_t <- dat_ddm_bl2_t %>%
 #   select(participant_id, t_ax, t_ay, t_bx, t_by)
 # 
-# dat_ddm_bl2_z <- read.csv("~/Documents/umn_work/topx_analyses/topx_mri_ddm/data/20241206_ddm_data/bl2/stats_z.csv")
+# dat_ddm_bl2_z <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/bl2/stats_z.csv")
 # dat_ddm_bl2_z <- dat_ddm_bl2_z %>%
 #   select(participant_id, z_a, z_b)
 # 
