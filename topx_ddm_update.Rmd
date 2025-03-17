@@ -21,7 +21,7 @@ pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, M
 # Custom function to read, select, and join datasets
 process_data <- function(block, types, column_mappings) {
   datasets <- lapply(types, function(type) {
-    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241031_ddm_data/", block, "/stats_", type, ".csv")
     read.csv(file_path) %>%
       select(all_of(column_mappings[[type]]))
   })
@@ -90,8 +90,8 @@ dat_ddm_bl2 <- filter(dat_ddm_all, visit == "BL2")
 ## clean/reformat DDM data
 ```{r}
 # filter out SP1051, which does not have all parameters at BL2
-dat_ddm_bl1 <- filter(dat_ddm_bl1, subj_idx != "SP1051")
-dat_ddm_bl2 <- filter(dat_ddm_bl2, subj_idx != "SP1051")
+# dat_ddm_bl1 <- filter(dat_ddm_bl1, subj_idx != "SP1051")
+# dat_ddm_bl2 <- filter(dat_ddm_bl2, subj_idx != "SP1051")
 
 ## match BL1 to BL2 DDM 
 dat_ddm_bl1 <- subset(dat_ddm_bl1, (subj_idx %in% dat_ddm_bl2$subj_idx))
@@ -157,7 +157,7 @@ dat_topx_all <- subset(dat_topx_all, (subj_idx %in% dat_ddm_all$subj_idx))
 
 ## load behav data
 ```{r}
-dat_behav <- read.csv("data/step_behav_dat_20250222.csv")
+dat_behav <- read.csv("data/step_behav_dat_ddm_20250316.csv")
 colnames(dat_behav)[1] <- "subj_idx"
 ```
 
@@ -217,7 +217,7 @@ plot_err_sep <- ggplot(dat_topx_all,
         plot.title = element_text(face = "bold", size = 22))
 plot_err_sep
 
-#ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.png"), plot_err_sep, width = 6, height = 4)
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.png"), plot_err_sep, width = 6, height = 4)
 ```
 
 ## error w/o visit
@@ -254,7 +254,7 @@ plot_err_comb <- ggplot(dat_topx_all,
         plot.title = element_text(face = "bold", size = 22))
 plot_err_comb
 
-#ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Comb.png"), plot_err_comb, width = 6, height = 4)
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Comb.png"), plot_err_comb, width = 6, height = 4)
 ```
 
 
@@ -426,7 +426,7 @@ plot_rt_sep <- ggplot(dat_topx_all,
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_sep
 
-#ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.png"), plot_rt_sep, width = 6, height = 4)
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.png"), plot_rt_sep, width = 6, height = 4)
 ```
 
 ## RT w/o visit
@@ -464,7 +464,7 @@ plot_rt_comb <- ggplot(dat_topx_all,
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_comb
 
-#ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"), plot_rt_comb, width = 6, height = 4)
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"), plot_rt_comb, width = 6, height = 4)
 ```
 
 ### investigate age
@@ -521,7 +521,7 @@ lmer_plot_comb <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALS
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  #ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_Comb.png"), plot, width = 6, height = 4)
+  # ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_Comb.png"), plot, width = 6, height = 4)
 }
 
 # lmer and plot with visit
@@ -568,7 +568,7 @@ lmer_plot_sep <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  #ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_Sep.png"), plot, width = 6, height = 4)
+  # ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_Sep.png"), plot, width = 6, height = 4)
 }
 ```
 
@@ -610,7 +610,7 @@ lmer_plot_comb(v_dat_all, "Drift Rates",
            "Drift Rate (v)", 0.7, 3, posthoc = TRUE)
 ```
 
-# drift rate sep
+## drift rate sep
 ```{r}
 lmer_plot_sep(v_dat_all, 
                 "Drift Rates", 
@@ -744,7 +744,7 @@ corrplot(dat_cor_bl2, method = "color", addCoef.col = 'white')
 # Custom function to read, select, and join datasets
 process_data_intc <- function(block, types, column_mappings) {
   datasets <- lapply(types, function(type) {
-    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241206_ddm_data/", block, "/stats_", type, ".csv")
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241031_ddm_data/", block, "/stats_", type, ".csv")
     read.csv(file_path) %>%
       select(all_of(column_mappings[[type]])) %>%
       rename(!!paste0(type, "_ppt") := participant)
@@ -851,7 +851,7 @@ cor_sxs(v_dat_all_pt_AX, "bprs_disorg_ws")
 cor_sxs(v_dat_all_pt_AX, "bprs_dep_anx_ws")
 cor_sxs(v_dat_all_pt_AX, "bprs_mania_ws")
 # BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
-cor_sxs(v_dat_BL1_pt_BX, "bprs_neg_ws")
+cor_sxs(v_dat_BL1_pt_AX, "bprs_neg_ws")
 cor_sxs(v_dat_BL2_pt_AX, "bprs_neg_ws")
 
 # v-BX - BPRS
@@ -943,8 +943,9 @@ dates$BL2 <- as.Date(dates$BL2, format = "%Y%m%d")
 dates$diff <- dates$BL2 - dates$BL1
 
 mean(dates$diff)
-median(dates$diff)
 sd(dates$diff)
+median(dates$diff)
+IQR(dates$diff)
 ```
 
 # descriptives
