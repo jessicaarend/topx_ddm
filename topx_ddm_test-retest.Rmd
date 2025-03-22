@@ -1,0 +1,685 @@
+---
+title: "TOPX DDM Test-Retest"
+author: "Jessica Arend"
+date:  "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r}
+# clear workspace
+rm(list=ls())
+
+# read in packages
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych)
+```
+
+# Read/reformat TOPX data
+```{r}
+dat_topx <- read.csv("~/Documents/umn_work/topx_analyses/topx_clean/aggregate_data/aggregate_topx_20250125.csv")
+
+dat_topx[dat_topx == "BL1.5"] <- "BL1"
+dat_topx[dat_topx == "BL2.5"] <- "BL2"
+dat_topx[dat_topx == "6M.5"] <- "6M"
+dat_topx[dat_topx == "7M.5"] <- "7M"
+dat_topx[dat_topx == "12M.5"] <- "12M"
+
+## Baseline 1
+dat_bl1_topx <- dat_topx %>% 
+  filter(visit == "BL1") 
+
+## Baseline 2
+dat_bl2_topx <- dat_topx %>% 
+  filter(visit == "BL2") 
+
+## 6-Month
+dat_6m_topx <- dat_topx %>% 
+  filter(visit == "6M") 
+
+## match BL1 to BL2 TOPX 
+dat_bl1_topx_rev <- subset(dat_bl1_topx, (subj %in% dat_bl2_topx$subj))
+dat_bl2_topx_rev <- subset(dat_bl2_topx, (subj %in% dat_bl1_topx$subj))
+
+## merge TOPX data
+dat_all_topx <- rbind(dat_bl1_topx_rev, dat_bl2_topx_rev)
+dat_all_topx$subj_idx <- dat_all_topx$subj
+```
+
+## optional: filter dat behav by another dataset
+```{r}
+ddm_sample_subjx <- read.csv("~/Documents/umn_work/topx_analyses/topx_ddm/data/topx_ddm_sample_subjx_20250316.csv")
+dat_all_topx <- subset(dat_all_topx, subj %in% ddm_sample_subjx$subj)
+```
+
+### write functions to calculate ICCs for TOPX
+```{r}
+# function to run ICCs by group
+calc_ICC_topx <- function(icc_trialtype, icc_group, var) {
+  library(dplyr)
+  library(psych)
+  
+  # filter and rename bl1 data
+  icc_dat_bl1 <- dat_bl1_topx_rev %>% 
+    filter(trial_type == icc_trialtype) %>% 
+    select(subj, subj_type, !!sym(var)) %>% 
+    rename(icc_bl1_var = !!sym(var))
+  
+  # Filter and rename bl2 data
+  icc_dat_bl2 <- dat_bl2_topx_rev %>% 
+    filter(trial_type == icc_trialtype) %>% 
+    select(subj, subj_type, !!sym(var)) %>% 
+    rename(icc_bl2_var = !!sym(var))
+  
+  # Combine baseline 1 and 2 data
+  icc_dat_comb <- merge(icc_dat_bl1, icc_dat_bl2, by = c("subj","subj_type"),
+                        all = TRUE)
+  
+  # Subset combined data for one group only
+  icc_dat_comb_grp <- icc_dat_comb %>%
+    filter(subj_type == icc_group) %>%
+    select(icc_bl1_var, icc_bl2_var)
+  
+  # Run ICC for group
+  return(ICC(icc_dat_comb_grp, lmer = TRUE))
+}
+
+# function to run ICCs for all participants
+calc_ICC_topx_all <- function(icc_trialtype, var) {
+  library(dplyr)
+  library(psych)
+
+  # filter and rename bl1 data
+  icc_dat_bl1 <- dat_bl1_topx_rev %>%
+    filter(trial_type == icc_trialtype) %>%
+    select(subj, !!sym(var)) %>%
+    rename(icc_bl1_var = !!sym(var))
+
+  # Filter and rename bl2 data
+  icc_dat_bl2 <- dat_bl2_topx_rev %>%
+    filter(trial_type == icc_trialtype) %>%
+    select(subj, !!sym(var)) %>%
+    rename(icc_bl2_var = !!sym(var))
+
+  # Combine baseline 1 and 2 data
+  icc_dat_comb <- merge(icc_dat_bl1, icc_dat_bl2, by = c("subj"), 
+                        all = TRUE)
+
+  # Subset combined data for both pts and controls
+  icc_dat_comb <- icc_dat_comb %>%
+    select(icc_bl1_var, icc_bl2_var)
+
+  # Run ICC for all ppts
+  return(ICC(icc_dat_comb, lmer = TRUE))
+}
+
+```
+
+## TOPX Error: ICC
+```{r, message=F}
+icc_err_ax_all <- calc_ICC_topx_all("AX", "error")
+icc_err_ax_pt <- calc_ICC_topx("AX", "Patient", "error")
+icc_err_ax_ctl <- calc_ICC_topx("AX", "Control", "error")
+
+icc_err_ay_all <- calc_ICC_topx_all("AY", "error")
+icc_err_ay_pt <- calc_ICC_topx("AY", "Patient", "error") 
+icc_err_ay_ctl <- calc_ICC_topx("AY", "Control", "error") 
+
+icc_err_bx_all <- calc_ICC_topx_all("BX", "error")
+icc_err_bx_pt <- calc_ICC_topx("BX", "Patient", "error")
+icc_err_bx_ctl <- calc_ICC_topx("BX", "Control", "error")
+
+icc_err_by_all <- calc_ICC_topx_all("BY", "error")
+icc_err_by_pt <- calc_ICC_topx("BY", "Patient", "error") 
+icc_err_by_ctl <- calc_ICC_topx("BY", "Control", "error") 
+```
+
+#### Table: TOPX Error ICC Correlations/P-values
+```{r, echo=F}
+icc_table_topx_err <- data.frame(
+  trial_type = character(4),
+  # all_icc= numeric(4),
+  # all_lowCI = numeric(4),
+  # all_upCI  = numeric(4),
+  # all_p = numeric(4),
+  pt_icc = character(4),
+  pt_lowCI = numeric(4),
+  pt_upCI = numeric(4),
+  # pt_p = numeric(4),
+  ctl_icc = numeric(4),
+  ctl_lowCI = numeric(4),
+  ctl_upCI = numeric(4),
+  # ctl_p = numeric(4),
+  stringsAsFactors = FALSE
+)
+
+# Fill in the "parameter" column with the specified values
+icc_table_topx_err$trial_type <- c("AX", "AY", "BX", "BY")
+
+# all ICCs
+# icc_table_topx_err$all_icc <- c(icc_err_ax_all$results[1,2], icc_err_ay_all$results[1,2], icc_err_bx_all$results[1,2], icc_err_by_all$results[1,2])
+# icc_table_topx_err$all_lowCI <- c(icc_err_ax_all$results[1,7], icc_err_ay_all$results[1,7],  icc_err_bx_all$results[1,7], icc_err_by_all$results[1,7])
+# icc_table_topx_err$all_upCI <- c(icc_err_ax_all$results[1,8], icc_err_ay_all$results[1,8],  icc_err_bx_all$results[1,8], icc_err_by_all$results[1,8])
+# icc_table_topx_err$all_p <- c(icc_err_ax_all$results[1,6], icc_err_ay_all$results[1,6],  icc_err_bx_all$results[1,6], icc_err_by_all$results[1,6])
+
+# patient ICCs
+icc_table_topx_err$pt_icc <- c(icc_err_ax_pt$results[1,2], icc_err_ay_pt$results[1,2], icc_err_bx_pt$results[1,2], icc_err_by_pt$results[1,2])
+icc_table_topx_err$pt_lowCI <- c(icc_err_ax_pt$results[1,7], icc_err_ay_pt$results[1,7],  icc_err_bx_pt$results[1,7], icc_err_by_pt$results[1,7])
+icc_table_topx_err$pt_upCI <- c(icc_err_ax_pt$results[1,8], icc_err_ay_pt$results[1,8],  icc_err_bx_pt$results[1,8], icc_err_by_pt$results[1,8])
+# icc_table_topx_err$pt_p <- c(icc_err_ax_pt$results[1,6], icc_err_ay_pt$results[1,6], icc_err_bx_pt$results[1,6], icc_err_by_pt$results[1,6])
+
+# control ICCs
+icc_table_topx_err$ctl_icc <- c(icc_err_ax_ctl$results[1,2], icc_err_ay_ctl$results[1,2], icc_err_bx_ctl$results[1,2], icc_err_by_ctl$results[1,2])
+icc_table_topx_err$ctl_lowCI <- c(icc_err_ax_ctl$results[1,7], icc_err_ay_ctl$results[1,7],  icc_err_bx_ctl$results[1,7], icc_err_by_ctl$results[1,7])
+icc_table_topx_err$ctl_upCI <- c(icc_err_ax_ctl$results[1,8], icc_err_ay_ctl$results[1,8],  icc_err_bx_ctl$results[1,8], icc_err_by_ctl$results[1,8])
+# icc_table_topx_err$ctl_p <- c(icc_err_ax_ctl$results[1,6], icc_err_ay_ctl$results[1,6],  icc_err_bx_ctl$results[1,6], icc_err_by_ctl$results[1,6])
+
+# Round the values in the corr_table data frame to 4 decimal points
+# icc_table_topx_err$all_icc <- round(icc_table_topx_err$all_icc, 2)
+# icc_table_topx_err$all_lowCI <- round(icc_table_topx_err$all_lowCI, 2)
+# icc_table_topx_err$all_upCI <- round(icc_table_topx_err$all_upCI, 2)
+# icc_table_topx_err$all_p <- round(icc_table_topx_err$all_p, 4)
+icc_table_topx_err$pt_icc <- round(icc_table_topx_err$pt_icc, 2)
+icc_table_topx_err$pt_lowCI <- round(icc_table_topx_err$pt_lowCI, 2)
+icc_table_topx_err$pt_upCI <- round(icc_table_topx_err$pt_upCI, 2)
+# icc_table_topx_err$pt_p <- round(icc_table_topx_err$pt_p, 4)
+icc_table_topx_err$ctl_icc <- round(icc_table_topx_err$ctl_icc, 2)
+icc_table_topx_err$ctl_lowCI <- round(icc_table_topx_err$ctl_lowCI, 2)
+icc_table_topx_err$ctl_upCI <- round(icc_table_topx_err$ctl_upCI, 2)
+# icc_table_topx_err$ctl_p <- round(icc_table_topx_err$ctl_p, 4)
+
+# Print the data frame to verify
+print(icc_table_topx_err)
+```
+
+
+## TOPX RT: ICC
+```{r}
+icc_rt_ax_all <- calc_ICC_topx_all("AX", "rt_mdn")
+icc_rt_ax_pt <- calc_ICC_topx("AX", "Patient", "rt_mdn") 
+icc_rt_ax_ctl <- calc_ICC_topx("AX", "Control", "rt_mdn")
+
+icc_rt_ay_all <- calc_ICC_topx_all("AY", "rt_mdn")
+icc_rt_ay_pt <- calc_ICC_topx("AY", "Patient", "rt_mdn") 
+icc_rt_ay_ctl <- calc_ICC_topx("AY", "Control", "rt_mdn") 
+
+icc_rt_bx_all <- calc_ICC_topx_all("BX", "rt_mdn")
+icc_rt_bx_pt <- calc_ICC_topx("BX", "Patient", "rt_mdn")
+icc_rt_bx_ctl <- calc_ICC_topx("BX", "Control", "rt_mdn")
+
+icc_rt_by_all <- calc_ICC_topx_all("BY", "rt_mdn")
+icc_rt_by_pt <- calc_ICC_topx("BY", "Patient", "rt_mdn") 
+icc_rt_by_ctl <- calc_ICC_topx("BY", "Control", "rt_mdn") 
+```
+
+#### Table: TOPX RT ICC Correlations/P-values
+```{r, echo=F}
+icc_table_topx_rt <- data.frame(
+  trial_type = character(4),
+  # all_icc = character(4),
+  # all_lowCI = numeric(4),
+  # all_upCI = numeric(4),
+  # all_p = numeric(4),
+  pt_icc = character(4),
+  pt_lowCI = numeric(4),
+  pt_upCI = numeric(4),
+  # pt_p = numeric(4),
+  ctl_icc = numeric(4),
+  ctl_lowCI = numeric(4),
+  ctl_upCI = numeric(4),
+  # ctl_p = numeric(4),
+  stringsAsFactors = FALSE
+)
+
+# Fill in the "parameter" column with the specified values
+icc_table_topx_rt$trial_type <- c("AX", "AY", "BX", "BY")
+
+# whole sample ICCs
+# icc_table_topx_rt$all_icc <- c(icc_rt_ax_all$results[1,2], icc_rt_ay_all$results[1,2], icc_rt_bx_all$results[1,2], icc_rt_by_all$results[1,2])
+# icc_table_topx_rt$all_lowCI <- c(icc_rt_ax_all$results[1,7], icc_rt_ay_all$results[1,7],  icc_rt_bx_all$results[1,7], icc_rt_by_all$results[1,7])
+# icc_table_topx_rt$all_upCI <- c(icc_rt_ax_all$results[1,8], icc_rt_ay_all$results[1,8],  icc_rt_bx_all$results[1,8], icc_rt_by_all$results[1,8])
+# # icc_table_topx_rt$all_p <- c(icc_rt_ax_all$results[1,6], icc_rt_ay_all$results[1,6], icc_rt_bx_all$results[1,6], icc_rt_by_all$results[1,6])
+
+# patient ICCs
+icc_table_topx_rt$pt_icc <- c(icc_rt_ax_pt$results[1,2], icc_rt_ay_pt$results[1,2], icc_rt_bx_pt$results[1,2], icc_rt_by_pt$results[1,2])
+icc_table_topx_rt$pt_lowCI <- c(icc_rt_ax_pt$results[1,7], icc_rt_ay_pt$results[1,7], icc_rt_bx_pt$results[1,7], icc_rt_by_pt$results[1,7])
+icc_table_topx_rt$pt_upCI <- c(icc_rt_ax_pt$results[1,8], icc_rt_ay_pt$results[1,8], icc_rt_bx_pt$results[1,8], icc_rt_by_pt$results[1,8])
+# icc_table_topx_rt$pt_p <- c(icc_rt_ax_pt$results[1,6], icc_rt_ay_pt$results[1,6], icc_rt_bx_pt$results[1,6], icc_rt_by_pt$results[1,6])
+
+# control ICCs
+icc_table_topx_rt$ctl_icc <- c(icc_rt_ax_ctl$results[1,2], icc_rt_ay_ctl$results[1,2], icc_rt_bx_ctl$results[1,2], icc_rt_by_ctl$results[1,2])
+icc_table_topx_rt$ctl_lowCI <- c(icc_rt_ax_ctl$results[1,7], icc_rt_ay_ctl$results[1,7],  icc_rt_bx_ctl$results[1,7], icc_rt_by_ctl$results[1,7])
+icc_table_topx_rt$ctl_upCI <- c(icc_rt_ax_ctl$results[1,8], icc_rt_ay_ctl$results[1,8],  icc_rt_bx_ctl$results[1,8], icc_rt_by_ctl$results[1,8])
+# icc_table_topx_rt$ctl_p <- c(icc_rt_ax_ctl$results[1,6], icc_rt_ay_ctl$results[1,6], icc_rt_bx_ctl$results[1,6], icc_rt_by_ctl$results[1,6])
+
+# Round the values in the corr_table data frame to 4 decimal points
+# icc_table_topx_rt$all_icc <- round(icc_table_topx_rt$all_icc, 2)
+# icc_table_topx_rt$all_lowCI <- round(icc_table_topx_rt$all_lowCI, 2)
+# icc_table_topx_rt$all_upCI <- round(icc_table_topx_rt$all_upCI, 2)
+# icc_table_topx_rt$all_p <- round(icc_table_topx_rt$all_p, 4)
+icc_table_topx_rt$pt_icc <- round(icc_table_topx_rt$pt_icc, 2)
+icc_table_topx_rt$pt_lowCI <- round(icc_table_topx_rt$pt_lowCI, 2)
+icc_table_topx_rt$pt_upCI <- round(icc_table_topx_rt$pt_upCI, 2)
+# icc_table_topx_rt$pt_p <- round(icc_table_topx_rt$pt_p, 4)
+icc_table_topx_rt$ctl_icc <- round(icc_table_topx_rt$ctl_icc, 2)
+icc_table_topx_rt$ctl_lowCI <- round(icc_table_topx_rt$ctl_lowCI, 2)
+icc_table_topx_rt$ctl_upCI <- round(icc_table_topx_rt$ctl_upCI, 2)
+# icc_table_topx_rt$ctl_p <- round(icc_table_topx_rt$ctl_p, 4)
+
+# Print the data frame to verify
+print(icc_table_topx_rt)
+```
+
+
+## TOPX d' ICC
+```{r}
+# Filtering by AX to avoid duplicate rows, but d' is same for all trials
+icc_d_con_all <- calc_ICC_topx_all("AX", "d_context")
+icc_d_con_pt <- calc_ICC_topx("AX", "Patient", "d_context")
+icc_d_con_ctl <- calc_ICC_topx("AX", "Control", "d_context")
+
+icc_d_exp_all <- calc_ICC_topx_all("AX", "d_expect")
+icc_d_exp_pt <- calc_ICC_topx("AX", "Patient", "d_expect")
+icc_d_exp_ctl <- calc_ICC_topx("AX", "Control", "d_expect")
+```
+
+#### Table: TOPX d' ICC Correlations/P-values
+```{r, echo=F}
+icc_table_topx_d <- data.frame(
+  d_type = character(2),
+  # all_icc = numeric(2),
+  # all_lowCI = numeric(2),
+  # all_upCI = numeric(2),
+  # all_p = numeric(2),
+  pt_icc = character(2),
+  pt_lowCI = numeric(2),
+  pt_upCI = numeric(2),
+  # pt_p = numeric(2),
+  ctl_icc = numeric(2),
+  ctl_lowCI = numeric(2),
+  ctl_upCI = numeric(2),
+  # ctl_p = numeric(2),
+  stringsAsFactors = FALSE
+)
+
+# Fill in the "parameter" column with the specified values
+icc_table_topx_d$d_type <- c("d_context", "d_expect")
+
+# all ICCs
+# icc_table_topx_d$all_icc <- c(icc_d_con_all$results[1,2], icc_d_exp_all$results[1,2])
+# icc_table_topx_d$all_lowCI <- c(icc_d_con_all$results[1,7], icc_d_exp_all$results[1,7])
+# icc_table_topx_d$all_upCI <- c(icc_d_con_all$results[1,8], icc_d_exp_all$results[1,8])
+# # icc_table_topx_d$all_p <- c(icc_d_con_all$results[1,6], icc_d_exp_all$results[1,6])
+
+# patient ICCs
+icc_table_topx_d$pt_icc <- c(icc_d_con_pt$results[1,2], icc_d_exp_pt$results[1,2])
+icc_table_topx_d$pt_lowCI <- c(icc_d_con_pt$results[1,7], icc_d_exp_pt$results[1,7])
+icc_table_topx_d$pt_upCI <- c(icc_d_con_pt$results[1,8], icc_d_exp_pt$results[1,8])
+# icc_table_topx_d$pt_p <- c(icc_d_con_pt$results[1,6], icc_d_exp_pt$results[1,6])
+
+# control ICCs
+icc_table_topx_d$ctl_icc <- c(icc_d_con_ctl$results[1,2], icc_d_exp_ctl$results[1,2])
+icc_table_topx_d$ctl_lowCI <- c(icc_d_con_ctl$results[1,7], icc_d_exp_ctl$results[1,7])
+icc_table_topx_d$ctl_upCI <- c(icc_d_con_ctl$results[1,8], icc_d_exp_ctl$results[1,8])
+# icc_table_topx_d$ctl_p <- c(icc_d_con_ctl$results[1,6],  icc_d_exp_ctl$results[1,6])
+
+# Round the values in the corr_table data frame to 4 decimal points
+# icc_table_topx_d$all_icc <- round(icc_table_topx_d$all_icc, 2)
+# icc_table_topx_d$all_lowCI <- round(icc_table_topx_d$all_lowCI, 2)
+# icc_table_topx_d$all_upCI <- round(icc_table_topx_d$all_upCI, 2)
+# # icc_table_topx_d$all_p <- round(icc_table_topx_d$all_p, 4)
+
+icc_table_topx_d$pt_icc <- round(icc_table_topx_d$pt_icc, 2)
+icc_table_topx_d$pt_lowCI <- round(icc_table_topx_d$pt_lowCI, 2)
+icc_table_topx_d$pt_upCI <- round(icc_table_topx_d$pt_upCI, 2)
+# icc_table_topx_d$pt_p <- round(icc_table_topx_d$pt_p, 4)
+
+icc_table_topx_d$ctl_icc <- round(icc_table_topx_d$ctl_icc, 2)
+icc_table_topx_d$ctl_lowCI <- round(icc_table_topx_d$ctl_lowCI, 2)
+icc_table_topx_d$ctl_upCI <- round(icc_table_topx_d$ctl_upCI, 2)
+# icc_table_topx_d$ctl_p <- round(icc_table_topx_d$ctl_p, 4)
+
+# Print the data frame to verify
+print(icc_table_topx_d)
+```
+
+# Read/reformat DDM data
+```{r}
+# read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
+# Custom function to read, select, and join datasets
+process_data <- function(block, types, column_mappings) {
+  datasets <- lapply(types, function(type) {
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241031_ddm_data/", block, "/stats_", type, ".csv")
+    read.csv(file_path) %>%
+      select(all_of(column_mappings[[type]]))
+  })
+  
+  # Perform full joins on all datasets by "participant_id"
+  Reduce(function(x, y) full_join(x, y, by = "participant_id"), datasets) %>%
+    mutate(visit = toupper(block), .after = participant_id)
+}
+
+# Column mappings for different file types
+column_mappings <- list(
+  v = c("participant_id", "v_ax", "v_ay", "v_bx", "v_by"),
+  a = c("participant_id", "a_ax", "a_ay", "a_bx", "a_by"),
+  t = c("participant_id", "t_ax", "t_ay", "t_bx", "t_by"),
+  z = c("participant_id", "z_a", "z_b")
+)
+
+# Process data for each block
+types <- names(column_mappings)
+dat_bl1_ddm <- process_data("bl1", types, column_mappings)
+dat_bl2_ddm <- process_data("bl2", types, column_mappings)
+
+# Filter to retain only common participant_ids
+common_ids <- intersect(dat_bl1_ddm$participant_id, dat_bl2_ddm$participant_id)
+dat_bl1_ddm <- filter(dat_bl1_ddm, participant_id %in% common_ids)
+dat_bl2_ddm <- filter(dat_bl2_ddm, participant_id %in% common_ids)
+
+# Combine both datasets
+dat_ddm_all <- bind_rows(dat_bl1_ddm, dat_bl2_ddm)
+
+# Rename, pivot, and add `subj_type` column
+dat_ddm_all <- dat_ddm_all %>%
+  rename(subj_idx = participant_id) %>%
+  pivot_longer(
+    cols = c(v_ax, v_ay, v_bx, v_by, a_ax, a_ay, a_bx, a_by, 
+             t_ax, t_ay, t_bx, t_by, z_a, z_b),
+    names_to = c("parameter", "cttype"), 
+    names_sep = "_", 
+    values_to = "mean"
+  ) %>%
+  mutate(
+    group = case_when(
+      str_sub(subj_idx, 1, 3) == "SP1" ~ "Control",
+      str_sub(subj_idx, 1, 3) == "SP2" ~ "Patient",
+      TRUE ~ NA
+    )
+  )
+```
+
+## optional: filter dat behav by another dataset
+```{r}
+ddm_sample_subjx$subj_idx <- ddm_sample_subjx$subj
+dat_ddm_all <- subset(dat_ddm_all, subj_idx %in% ddm_sample_subjx$subj_idx)
+
+dat_bl1_ddm_rev <- filter(dat_ddm_all, visit == "BL1")
+dat_bl2_ddm_rev <- filter(dat_ddm_all, visit == "BL2")
+```
+
+# DDM: ICC (Intraclass Correlation Coefficients)
+```{r}
+calc_ICC_ddm <- function(icc_parameter, icc_cttype, icc_group) {
+  library(dplyr)
+  library(psych)
+  
+  # subset v-BX baseline 1 data
+  icc_dat_bl1 <- dat_bl1_ddm_rev %>% 
+    filter(parameter == icc_parameter & cttype == icc_cttype) %>% 
+    select(subj_idx, group, mean) %>% 
+    rename(icc_bl1_mean = mean)
+
+  # Filter and rename for v_BX_bl2
+  icc_dat_bl2 <- dat_bl2_ddm_rev %>%
+    filter(parameter == icc_parameter & cttype == icc_cttype) %>%
+    select(subj_idx, group, mean) %>%
+    rename(icc_bl2_mean = mean)
+  
+  # Combine v-BX baseline 1 and 2 data
+  icc_dat_comb <- merge(icc_dat_bl1, icc_dat_bl2, 
+                        by = c("subj_idx", "group"), all = TRUE)
+  
+  # Subset v-BX combined data for patients only
+  icc_dat_comb_grp <- icc_dat_comb %>%
+    filter(group == icc_group) %>%
+    select(icc_bl1_mean, icc_bl2_mean)
+  
+  # Run ICC for patients
+  # new as of 8/9/2024: set LMER = FALSE bc no missing data in DDM
+  return(ICC(icc_dat_comb_grp, lmer = FALSE))
+}
+
+calc_ICC_ddm_all <- function(icc_parameter, icc_cttype) {
+  library(dplyr)
+  library(psych)
+  
+  # subset v-BX baseline 1 data
+  icc_dat_bl1 <- dat_bl1_ddm_rev %>% 
+    filter(parameter == icc_parameter & cttype == icc_cttype) %>% 
+    select(subj_idx, mean) %>% 
+    rename(icc_bl1_mean = mean)
+  
+  # Filter and rename for v_BX_bl2
+  icc_dat_bl2 <- dat_bl2_ddm_rev %>%
+    filter(parameter == icc_parameter & cttype == icc_cttype) %>%
+    select(subj_idx, mean) %>%
+    rename(icc_bl2_mean = mean)
+  
+  # Combine v-BX baseline 1 and 2 data
+  icc_dat_comb <- merge(icc_dat_bl1, icc_dat_bl2, 
+                        by = c("subj_idx"), all = TRUE)
+  
+  # Subset v-BX combined data for patients only
+  icc_dat_comb <- icc_dat_comb %>%
+    select(icc_bl1_mean, icc_bl2_mean)
+  
+  # Run ICC for patients
+  # new as of 8/9/2024: set LMER = FALSE bc no missing data
+  return(ICC(icc_dat_comb, lmer = FALSE))
+}
+```
+
+### Drift Rates (ICC)
+```{r, echo=F, results='hide'}
+icc_v_ax_all <- calc_ICC_ddm_all("v", "ax")
+icc_v_ax_pt <- calc_ICC_ddm("v", "ax", "Patient")
+icc_v_ax_ctl <- calc_ICC_ddm("v", "ax", "Control")
+
+icc_v_ay_all <- calc_ICC_ddm_all("v", "ay")
+icc_v_ay_pt <- calc_ICC_ddm("v", "ay", "Patient")
+icc_v_ay_ctl <- calc_ICC_ddm("v", "ay", "Control")
+
+icc_v_bx_all <- calc_ICC_ddm_all("v", "bx")
+icc_v_bx_pt <- calc_ICC_ddm("v", "bx", "Patient")
+icc_v_bx_ctl <- calc_ICC_ddm("v", "bx", "Control")
+
+icc_v_by_all <- calc_ICC_ddm_all("v", "by")
+icc_v_by_pt <- calc_ICC_ddm("v", "by", "Patient")
+icc_v_by_ctl <- calc_ICC_ddm("v", "by", "Control")
+```
+
+### Decision Thresholds (ICC)
+```{r, echo=F, results='hide'}
+icc_a_ax_all <- calc_ICC_ddm_all("a", "ax")
+icc_a_ax_pt <- calc_ICC_ddm("a", "ax", "Patient")
+icc_a_ax_ctl <- calc_ICC_ddm("a", "ax", "Control")
+
+icc_a_ay_all <- calc_ICC_ddm_all("a", "ay")
+icc_a_ay_pt <- calc_ICC_ddm("a", "ay", "Patient")
+icc_a_ay_ctl <- calc_ICC_ddm("a", "ay", "Control")
+
+icc_a_bx_all <- calc_ICC_ddm_all("a", "bx")
+icc_a_bx_pt <- calc_ICC_ddm("a", "bx", "Patient")
+icc_a_bx_ctl <- calc_ICC_ddm("a", "bx", "Control")
+
+icc_a_by_all <- calc_ICC_ddm_all("a", "by")
+icc_a_by_pt <- calc_ICC_ddm("a", "by", "Patient")
+icc_a_by_ctl <- calc_ICC_ddm("a", "by", "Control")
+```
+
+### Non-Decision Times (ICC)
+```{r, echo=F, results='hide'}
+icc_t_ax_all <- calc_ICC_ddm_all("t", "ax")
+icc_t_ax_pt <- calc_ICC_ddm("t", "ax", "Patient")
+icc_t_ax_ctl <- calc_ICC_ddm("t", "ax", "Control")
+
+icc_t_ay_all <- calc_ICC_ddm_all("t", "ay")
+icc_t_ay_pt <- calc_ICC_ddm("t", "ay", "Patient")
+icc_t_ay_ctl <- calc_ICC_ddm("t", "ay", "Control")
+
+icc_t_bx_all <- calc_ICC_ddm_all("t", "bx")
+icc_t_bx_pt <- calc_ICC_ddm("t", "bx", "Patient")
+icc_t_bx_ctl <- calc_ICC_ddm("t", "bx", "Control")
+
+icc_t_by_all <- calc_ICC_ddm_all("t", "by")
+icc_t_by_pt <- calc_ICC_ddm("t", "by", "Patient")
+icc_t_by_ctl <- calc_ICC_ddm("t", "by", "Control")
+```
+
+### Bias (ICC)
+```{r, echo=F, results='hide'}
+icc_z_a_all <- calc_ICC_ddm_all("z", "a")
+icc_z_a_ctl <- calc_ICC_ddm("z", "a", "Control")
+icc_z_a_pt <- calc_ICC_ddm("z", "a", "Patient")
+
+icc_z_b_all <- calc_ICC_ddm_all("z", "b")
+icc_z_b_ctl <- calc_ICC_ddm("z", "b", "Control")
+icc_z_b_pt <- calc_ICC_ddm("z", "b", "Patient")
+```
+
+### Table: DDM ICC Correlations/P-values
+```{r, echo=F}
+icc_table <- data.frame(
+  parameter = character(14),
+  cttype = character(14),
+  # all_icc = numeric(14),
+  # all_lowCI = numeric(14),
+  # all_upCI = numeric(14),
+  # all_p = numeric(14),
+  pt_icc = numeric(14),
+  pt_lowCI = numeric(14),
+  pt_upCI = numeric(14),
+  # pt_p = numeric(14),
+  ctl_icc = numeric(14),
+  ctl_lowCI = numeric(14),
+  ctl_upCI = numeric(14),
+  # ctl_p = numeric(14),
+  stringsAsFactors = FALSE
+)
+
+# Fill in the "parameter" column with the specified values
+icc_table$parameter <- c(rep("v", 4), rep("a", 4), rep("t", 4), rep("z", 2))
+
+icc_table$cttype <- c(rep(c("AX", "AY", "BX", "BY"), 3), "A", "B")
+
+# whole sample ICC
+# icc_table$all_icc <- c(icc_v_ax_all$results[1,2], icc_v_ay_all$results[1,2], 
+#                            icc_v_bx_all$results[1,2], icc_v_by_all$results[1,2],
+#                            icc_a_ax_all$results[1,2], icc_a_ay_all$results[1,2], 
+#                            icc_a_bx_all$results[1,2], icc_a_by_all$results[1,2],
+#                            icc_t_ax_all$results[1,2], icc_t_ay_all$results[1,2], 
+#                            icc_t_bx_all$results[1,2], icc_t_by_all$results[1,2],
+#                            icc_z_a_all$results[1,2], icc_z_b_all$results[1,2])
+# 
+# 
+# icc_table$all_lowCI <- c(icc_v_ax_all$results[1,7], icc_v_ay_all$results[1,7], 
+#                            icc_v_bx_all$results[1,7], icc_v_by_all$results[1,7],
+#                            icc_a_ax_all$results[1,7], icc_a_ay_all$results[1,7], 
+#                            icc_a_bx_all$results[1,7], icc_a_by_all$results[1,7],
+#                            icc_t_ax_all$results[1,7], icc_t_ay_all$results[1,7], 
+#                            icc_t_bx_all$results[1,7], icc_t_by_all$results[1,7],
+#                            icc_z_a_all$results[1,7], icc_z_b_all$results[1,7])
+# 
+# icc_table$all_upCI <- c(icc_v_ax_all$results[1,8], icc_v_ay_all$results[1,8], 
+#                            icc_v_bx_all$results[1,8], icc_v_by_all$results[1,8],
+#                            icc_a_ax_all$results[1,8], icc_a_ay_all$results[1,8], 
+#                            icc_a_bx_all$results[1,8], icc_a_by_all$results[1,8],
+#                            icc_t_ax_all$results[1,8], icc_t_ay_all$results[1,8], 
+#                            icc_t_bx_all$results[1,8], icc_t_by_all$results[1,8],
+#                            icc_z_a_all$results[1,8], icc_z_b_all$results[1,8])
+# 
+# icc_table$all_p <- c(icc_v_ax_all$results[1,6], icc_v_ay_all$results[1,6], 
+#                            icc_v_bx_all$results[1,6], icc_v_by_all$results[1,6],
+#                            icc_a_ax_all$results[1,6], icc_a_ay_all$results[1,6], 
+#                            icc_a_bx_all$results[1,6], icc_a_by_all$results[1,6],
+#                            icc_t_ax_all$results[1,6], icc_t_ay_all$results[1,6], 
+#                            icc_t_bx_all$results[1,6], icc_t_by_all$results[1,6],
+#                            icc_z_a_all$results[1,6], icc_z_b_all$results[1,6])
+
+# patient ICCs
+icc_table$pt_icc <- c(icc_v_ax_pt$results[1,2], icc_v_ay_pt$results[1,2], 
+                           icc_v_bx_pt$results[1,2], icc_v_by_pt$results[1,2],
+                           icc_a_ax_pt$results[1,2], icc_a_ay_pt$results[1,2], 
+                           icc_a_bx_pt$results[1,2], icc_a_by_pt$results[1,2],
+                           icc_t_ax_pt$results[1,2], icc_t_ay_pt$results[1,2], 
+                           icc_t_bx_pt$results[1,2], icc_t_by_pt$results[1,2],
+                           icc_z_a_pt$results[1,2], icc_z_b_pt$results[1,2])
+
+icc_table$pt_lowCI <- c(icc_v_ax_pt$results[1,7], icc_v_ay_pt$results[1,7], 
+                           icc_v_bx_pt$results[1,7], icc_v_by_pt$results[1,7],
+                           icc_a_ax_pt$results[1,7], icc_a_ay_pt$results[1,7], 
+                           icc_a_bx_pt$results[1,7], icc_a_by_pt$results[1,7],
+                           icc_t_ax_pt$results[1,7], icc_t_ay_pt$results[1,7], 
+                           icc_t_bx_pt$results[1,7], icc_t_by_pt$results[1,7],
+                           icc_z_a_pt$results[1,7], icc_z_b_pt$results[1,7])
+
+icc_table$pt_upCI <- c(icc_v_ax_pt$results[1,8], icc_v_ay_pt$results[1,8], 
+                           icc_v_bx_pt$results[1,8], icc_v_by_pt$results[1,8],
+                           icc_a_ax_pt$results[1,8], icc_a_ay_pt$results[1,8], 
+                           icc_a_bx_pt$results[1,8], icc_a_by_pt$results[1,8],
+                           icc_t_ax_pt$results[1,8], icc_t_ay_pt$results[1,8], 
+                           icc_t_bx_pt$results[1,8], icc_t_by_pt$results[1,8],
+                           icc_z_a_pt$results[1,8], icc_z_b_pt$results[1,8])
+
+# icc_table$pt_p <- c(icc_v_ax_pt$results[1,6], icc_v_ay_pt$results[1,6], 
+#                            icc_v_bx_pt$results[1,6], icc_v_by_pt$results[1,6],
+#                            icc_a_ax_pt$results[1,6], icc_a_ay_pt$results[1,6], 
+#                            icc_a_bx_pt$results[1,6], icc_a_by_pt$results[1,6],
+#                            icc_t_ax_pt$results[1,6], icc_t_ay_pt$results[1,6], 
+#                            icc_t_bx_pt$results[1,6], icc_t_by_pt$results[1,6],
+#                            icc_z_a_pt$results[1,6], icc_z_b_pt$results[1,6])
+
+# control ICCs
+icc_table$ctl_icc <- c(icc_v_ax_ctl$results[1,2], icc_v_ay_ctl$results[1,2], 
+                           icc_v_bx_ctl$results[1,2], icc_v_by_ctl$results[1,2],
+                           icc_a_ax_ctl$results[1,2], icc_a_ay_ctl$results[1,2], 
+                           icc_a_bx_ctl$results[1,2], icc_a_by_ctl$results[1,2],
+                           icc_t_ax_ctl$results[1,2], icc_t_ay_ctl$results[1,2], 
+                           icc_t_bx_ctl$results[1,2], icc_t_by_ctl$results[1,2],
+                           icc_z_a_ctl$results[1,2], icc_z_b_ctl$results[1,2])
+
+icc_table$ctl_lowCI <- c(icc_v_ax_ctl$results[1,7], icc_v_ay_ctl$results[1,7], 
+                           icc_v_bx_ctl$results[1,7], icc_v_by_ctl$results[1,7],
+                           icc_a_ax_ctl$results[1,7], icc_a_ay_ctl$results[1,7], 
+                           icc_a_bx_ctl$results[1,7], icc_a_by_ctl$results[1,7],
+                           icc_t_ax_ctl$results[1,7], icc_t_ay_ctl$results[1,7], 
+                           icc_t_bx_ctl$results[1,7], icc_t_by_ctl$results[1,7],
+                           icc_z_a_ctl$results[1,7], icc_z_b_ctl$results[1,7])
+
+icc_table$ctl_upCI <- c(icc_v_ax_ctl$results[1,8], icc_v_ay_ctl$results[1,8], 
+                           icc_v_bx_ctl$results[1,8], icc_v_by_ctl$results[1,8],
+                           icc_a_ax_ctl$results[1,8], icc_a_ay_ctl$results[1,8], 
+                           icc_a_bx_ctl$results[1,8], icc_a_by_ctl$results[1,8],
+                           icc_t_ax_ctl$results[1,8], icc_t_ay_ctl$results[1,8], 
+                           icc_t_bx_ctl$results[1,8], icc_t_by_ctl$results[1,8],
+                           icc_z_a_ctl$results[1,8], icc_z_b_ctl$results[1,8])
+
+# icc_table$ctl_p <- c(icc_v_ax_ctl$results[1,6], icc_v_ay_ctl$results[1,6], 
+#                            icc_v_bx_ctl$results[1,6], icc_v_by_ctl$results[1,6],
+#                            icc_a_ax_ctl$results[1,6], icc_a_ay_ctl$results[1,6], 
+#                            icc_a_bx_ctl$results[1,6], icc_a_by_ctl$results[1,6],
+#                            icc_t_ax_ctl$results[1,6], icc_t_ay_ctl$results[1,6], 
+#                            icc_t_bx_ctl$results[1,6], icc_t_by_ctl$results[1,6],
+#                            icc_z_a_ctl$results[1,6], icc_z_b_ctl$results[1,6])
+
+# Round the values in the corr_table data frame to 4 decimal points
+# icc_table$all_icc <- round(icc_table$all_icc, 2)
+# icc_table$all_lowCI <- round(icc_table$all_lowCI, 2)
+# icc_table$all_upCI <- round(icc_table$all_upCI, 2)
+# icc_table$all_p <- round(icc_table$all_p, 4)
+
+icc_table$pt_icc <- round(icc_table$pt_icc, 2)
+icc_table$pt_lowCI <- round(icc_table$pt_lowCI, 2)
+icc_table$pt_upCI <- round(icc_table$pt_upCI, 2)
+# icc_table$pt_p <- round(icc_table$pt_p, 4)
+
+icc_table$ctl_icc <- round(icc_table$ctl_icc, 2)
+icc_table$ctl_lowCI <- round(icc_table$ctl_lowCI, 2)
+icc_table$ctl_upCI <- round(icc_table$ctl_upCI, 2)
+# icc_table$ctl_p <- round(icc_table$ctl_p, 4)
+
+# Print the data frame to verify
+print(icc_table)
+```

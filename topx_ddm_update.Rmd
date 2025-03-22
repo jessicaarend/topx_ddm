@@ -1,8 +1,11 @@
 ---
-title: "ddm_update"
+title: "TOPX DDM Regressions"
 author: "Jessica Arend"
-date: "2025-02-21"
-output: html_document
+date:  "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
 ---
 
 # prep data
@@ -12,10 +15,10 @@ output: html_document
 rm(list=ls())
 
 # read in packages
-pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats, corrplot)
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, ggpubr, emmeans, lme4, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats, corrplot, MuMIn) 
 ```
 
-## load DDM (hssm) data
+## load DDM data
 ```{r}
 # read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
 # Custom function to read, select, and join datasets
@@ -52,6 +55,7 @@ dat_ddm_bl2 <- filter(dat_ddm_bl2, participant_id %in% common_ids)
 # Combine both datasets
 dat_ddm_all <- bind_rows(dat_ddm_bl1, dat_ddm_bl2)
 
+# save long format for later, before pivoting wider
 dat_ddm_all_long <- dat_ddm_all
 
 # Rename, pivot, and add `subj_type` column
@@ -82,34 +86,12 @@ dat_ddm_all <- dat_ddm_all %>%
                              cttype == "b" ~ "B",
                              TRUE ~ cttype))
 
-dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1051")
+# dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1051")
 dat_ddm_bl1 <- filter(dat_ddm_all, visit == "BL1")
 dat_ddm_bl2 <- filter(dat_ddm_all, visit == "BL2")
 ```
 
-## clean/reformat DDM data
-```{r}
-# filter out SP1051, which does not have all parameters at BL2
-# dat_ddm_bl1 <- filter(dat_ddm_bl1, subj_idx != "SP1051")
-# dat_ddm_bl2 <- filter(dat_ddm_bl2, subj_idx != "SP1051")
-
-## match BL1 to BL2 DDM 
-dat_ddm_bl1 <- subset(dat_ddm_bl1, (subj_idx %in% dat_ddm_bl2$subj_idx))
-dat_ddm_bl2 <- subset(dat_ddm_bl2, (subj_idx %in% dat_ddm_bl1$subj_idx))
-
-
-# add z-scores
-calc_z_score <- function(x) {
-  (x - mean(x)) / sd(x)
-}
-
-# Create the new variable "mean_z" using group_by and mutate
-dat_ddm_all <- dat_ddm_all %>%
-  group_by(parameter, cttype, visit, group) %>%
-  mutate(mean_z = calc_z_score(mean))
-```
-
-## save list of DDM subj
+## save list of subj
 ```{r}
 # save list of DDM subject IDs
 # write.csv( data.frame(subj = unique(dat_ddm_all$subj_idx)), file = file.path("data", paste0("topx_ddm_sample_subjx_", format(Sys.Date(), "%Y%m%d"), ".csv")), row.names = FALSE)
@@ -159,22 +141,52 @@ dat_topx_all <- subset(dat_topx_all, (subj_idx %in% dat_ddm_all$subj_idx))
 ```{r}
 dat_behav <- read.csv("data/step_behav_dat_for_ddm_20250317.csv")
 colnames(dat_behav)[1] <- "subj_idx"
+
+dat_behav <- dat_behav %>%
+  mutate(age_split = ifelse(age >= median(age, , na.rm = TRUE), 1, 0),  .after = age) %>% 
+  mutate(age_split = as.numeric(age_split))
+
+table(dat_behav$age_split)
+median(dat_behav$age)
+
+dat_behav %>%
+  group_by(age_split) %>%
+  summarize(age = mean(age, na.rm = TRUE))
 ```
 
-## combine all data
+## combine + subset data
 ```{r}
+# Merge TOPX + behav data --------
+dat_topx_behav = merge(dat_topx_all, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
+dat_topx_behav_bl1 = merge(dat_topx_bl1, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
+dat_topx_behav_bl2 = merge(dat_topx_bl2, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
+
 # Merge DDM + behav data --------
 dat_ddm_behav = merge(dat_ddm_all, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
 dat_ddm_behav_bl1 = merge(dat_ddm_bl1, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
 dat_ddm_behav_bl2 = merge(dat_ddm_bl2, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
 
-# Merge TOPX + behav data --------
-dat_topx_behav = merge(dat_topx_all, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
-dat_topx_behav_bl1 = merge(dat_topx_bl1, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
-dat_topx_behav_bl2 = merge(dat_topx_bl2, dat_behav, by = c("subj_idx","group"), all.x = TRUE)
+# subset DDM data by visit/parameter, for later use ------------------
+# DDM by parameter for BL1 + BL2  ---------------------
+v_dat_all = filter(dat_ddm_behav, parameter == 'v')
+a_dat_all = filter(dat_ddm_behav, parameter == 'a')
+t_dat_all = filter(dat_ddm_behav, parameter == 't')
+z_dat_all = filter(dat_ddm_behav, parameter == 'z') 
+
+# DDM by parameter for BL1 ---------------------
+v_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 'v')
+a_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 'a')
+t_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 't')
+z_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 'z') 
+
+# DDM by parameter for BL2 ---------------------
+v_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 'v')
+a_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 'a')
+t_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 't')
+z_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 'z') 
 ```
 
-# Observed analyses
+# OBSERVED ANALYSES
 
 ## calculate d'
 ```{r}
@@ -191,35 +203,270 @@ dat_dprime_all_long <- dat_dprime_all %>%
     names_to = "dprime_type",
     values_to = "dprime")
 
-# ## create dataframes with only BL1/only BL2 dat - long
+# create dataframes with only BL1/only BL2 dat - long
 dat_dprime_bl1_long <- dat_dprime_all_long %>%
   filter(visit == "BL1")
 dat_dprime_bl2_long <- dat_dprime_all_long %>%
   filter(visit == "BL2")
-# 
-# ## create dataframes with only BL1/only BL2 dat - wide
-# dat_dprime_bl1 <- dat_dprime_all %>% filter(visit == "BL1")
-# dat_dprime_bl2 <- dat_dprime_all %>% filter(visit == "BL2")
+
 ```
 
-## BL1 + BL2
-### error w/ visit
+## BL1 -----------------------
+### error
 ```{r}
-### BL-Comb Error LMER w visit-----------
-mod_err_comb_wv <- lmer(error ~ group * cttype * visit + (1|subj_idx) + age + gender, data = dat_topx_behav)
-anova(mod_err_comb_wv, type = 3)
-print(summary(mod_err_comb_wv))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ visit), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ cttype|group), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ group|visit), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ visit|group), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ cttype|visit), adjust = "mvt"))
-print(emmeans(mod_err_comb_wv, list(pairwise ~ visit|cttype), adjust = "mvt"))
+# plot error BL1
+plot_err_bl1 <- ggplot(dat_topx_bl1, 
+                        aes(x= cttype, y=error, group = group)) + 
+  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
+  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
+               width = 0.1, size = 1) + 
+  labs(title = "Error Rates at Visit 1", 
+       y = "Error Rate", x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(0.05, .35)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                   labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_err_bl1
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_BL1.png"), plot_err_bl1, width = 6, height = 4)
 
-### BL-Comb Error*Visit Graph  ----------
+### LMER error BL1
+mod_err_bl1 <- lmer(error ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl1)
+anova(mod_err_bl1, type = 3)
+summary(mod_err_bl1)
+r.squaredGLMM(mod_err_bl1)
+print(emmeans(mod_err_bl1, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_err_bl1, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_err_bl1, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_err_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
+check_model(mod_err_bl1)
+```
+
+###d'
+```{r}
+# plot d' BL1
+plot_dprime_bl1 <- ggplot(dat_dprime_bl1_long, 
+                          aes(x= dprime_type, y=dprime, 
+                              group = group)) + 
+  stat_summary(fun="mean", geom="line", 
+               aes(color = group),
+               linewidth = 1.5) + 
+  stat_summary(fun="mean", geom="point", aes(color = group),
+               size = 3) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
+               width = 0.05, size = 1) + 
+  labs(title = "D-prime (d') at Visit 1", 
+       y = "d' Value", 
+       x = "d' Type", color = "Group") +
+  coord_cartesian(ylim = c(2.0, 3.5)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  scale_x_discrete(labels = c("d_context" = "d' Context", 
+                              "d_expect" = "d' Expectancy")) +
+  scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
+                     labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_dprime_bl1
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL1.png"), plot_dprime_bl1, width = 6, height = 4)
+
+#### LMER d' BL1 -----
+mod_d_bl1 <- lmer(dprime ~ group * dprime_type + age + (1|subj_idx), data = dat_dprime_bl1_long)
+anova(mod_d_bl1, type = 3)
+summary(mod_d_bl1)
+r.squaredGLMM(mod_d_bl1)
+print(emmeans(mod_d_bl1, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_d_bl1, list(pairwise ~ dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_bl1, list(pairwise ~ group|dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_bl1, list(pairwise ~ dprime_type|group), adjust = "mvt"))
+check_model(mod_d_bl1)
+```
+
+### RT
+```{r}
+# plot RT BL1
+plot_rt_bl1 <- ggplot(dat_topx_bl1, 
+                       aes(x= cttype, y=rt_mdn, group = group)) + 
+  stat_summary(fun="mean", geom="line", 
+               aes(color = group), linewidth = 1.5) + 
+  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
+               width = 0.1, size = 1) + 
+  labs(title = "Reaction Times (RT) at Visit 1", 
+       y = "Median Correct RT (ms)", 
+       x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(280, 600)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_rt_bl1
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_BL1.png"), plot_rt_bl1, width = 6, height = 4)
+
+### LMER RT BL1 
+mod_rt_bl1 <- lmer(rt_mdn ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl1)
+anova(mod_rt_bl1, type = 3)
+summary(mod_rt_bl1)
+r.squaredGLMM(mod_rt_bl1)
+print(emmeans(mod_rt_bl1, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_rt_bl1, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_rt_bl1, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_rt_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
+check_model(mod_rt_bl1)
+```
+
+## BL2 -----------------------
+### error
+```{r}
+# plot error BL2
+plot_err_bl2 <- ggplot(dat_topx_bl2, 
+                        aes(x= cttype, y=error, group = group)) + 
+  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
+  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
+               width = 0.1, size = 1) + 
+  labs(title = "Error Rates at Visit 2", 
+       y = "Error Rate", x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(0.05, .35)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                   labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_err_bl2
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_BL2.png"), plot_err_bl2, width = 6, height = 4)
+
+### LMER Error BL2
+mod_err_bl2 <- lmer(error ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl2)
+anova(mod_err_bl2, type = 3)
+summary(mod_err_bl2)
+r.squaredGLMM(mod_err_bl2)
+print(emmeans(mod_err_bl2, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_err_bl2, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_err_bl2, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_err_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
+check_model(mod_err_bl2)
+```
+
+### d'
+```{r}
+# plot d' BL2
+plot_dprime_bl2 <- ggplot(dat_dprime_bl2_long, 
+                          aes(x= dprime_type, y=dprime, 
+                              group = group)) + 
+  stat_summary(fun="mean", geom="line", 
+               aes(color = group),
+               linewidth = 1.5) + 
+  stat_summary(fun="mean", geom="point", aes(color = group),
+               size = 3) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
+               width = 0.05, size = 1) + 
+  labs(title = "D-prime (d') at Visit 2", 
+       y = "d' Value", 
+       x = "d' Type", color = "Group") +
+  coord_cartesian(ylim = c(2.0, 3.5)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  scale_x_discrete(labels = c("d_context" = "d' Context", 
+                              "d_expect" = "d' Expectancy")) +
+  scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
+                     labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_dprime_bl2
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL2.png"), plot_dprime_bl2, width = 6, height = 4)
+
+#### LMER d' BL2 -----
+mod_d_bl2 <- lmer(dprime ~ group * dprime_type + age + (1|subj_idx), data = dat_dprime_bl2_long)
+anova(mod_d_bl2, type = 3)
+summary(mod_d_bl2)
+r.squaredGLMM(mod_d_bl2)
+print(emmeans(mod_d_bl2, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_d_bl2, list(pairwise ~ dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_bl2, list(pairwise ~ group|dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_bl2, list(pairwise ~ dprime_type|group), adjust = "mvt"))
+check_model(mod_d_bl2)
+```
+
+### RT
+```{r}
+# plot RT BL2
+plot_rt_bl2 <- ggplot(dat_topx_bl2, 
+                       aes(x= cttype, y=rt_mdn, group = group)) + 
+  stat_summary(fun="mean", geom="line", 
+               aes(color = group), linewidth = 1.5) + 
+  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
+               width = 0.1, size = 1) + 
+  labs(title = "Reaction Times (RT) at Visit 2", 
+       y = "Median Correct RT (ms)", 
+       x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(280, 600)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_rt_bl2
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_BL2.png"), plot_rt_bl2, width = 6, height = 4)
+
+### LMER RT BL2
+mod_rt_bl2 <- lmer(rt_mdn ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl2)
+anova(mod_rt_bl2, type = 3)
+summary(mod_rt_bl2)
+r.squaredGLMM(mod_rt_bl2)
+print(emmeans(mod_rt_bl2, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_rt_bl2, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_rt_bl2, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_rt_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
+check_model(mod_rt_bl2)
+```
+
+## BL1+BL2 sep ----------
+### error
+```{r}
+### plot error BL1+BL2 sep (w/ visit)----------
 plot_err_sep <- ggplot(dat_topx_all, 
                         aes(x= cttype, y=error, group = interaction(group,visit))) + 
   stat_summary(fun="mean", geom="line", 
@@ -246,62 +493,28 @@ plot_err_sep <- ggplot(dat_topx_all,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_err_sep
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.png"), plot_err_sep, width = 6, height = 4)
 
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.png"), plot_err_sep, width = 6, height = 4)
+### LMER error BL1+BL2 Sep (w/ visit) -----------
+mod_err_sep<- lmer(error ~ group * cttype * visit + age + (1|subj_idx), data = dat_topx_behav)
+anova(mod_err_sep, type = 3)
+print(summary(mod_err_sep))
+r.squaredGLMM(mod_err_sep)
+print(emmeans(mod_err_sep, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ visit), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ cttype|group), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ group|visit), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ visit|group), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ cttype|visit), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ visit|cttype), adjust = "mvt"))
+check_model(mod_err_sep)
 ```
 
-### error w/o visit
+### d'
 ```{r}
-### BL-Comb Error LMER wo visit
-mod_err_comb_wov <- lmer(error ~ group * cttype + (1|subj_idx) + age + gender, data = dat_topx_behav)
-anova(mod_err_comb_wov, type = 3)
-summary(mod_err_comb_wov)
-print(emmeans(mod_err_comb_wov, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_err_comb_wov, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_err_comb_wov, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_err_comb_wov, list(pairwise ~ cttype|group), adjust = "mvt"))
-
-# plot with single line for BL-Comb
-plot_err_comb <- ggplot(dat_topx_all, 
-                        aes(x= cttype, y=error, group = group)) + 
-  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
-  labs(title = "Error Rates", 
-       y = "Error Rate", x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(0.05, .35)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                   labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(), 
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_err_comb
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Comb.png"), plot_err_comb, width = 6, height = 4)
-```
-
-### d' w/ visit
-```{r}
-#### d'comb LMER w visit -----
-mod_d_comb_wv <- lmer(dprime ~ group * dprime_type * visit + (1|subj_idx) + age + gender, data = dat_dprime_all_long)
-anova(mod_d_comb_wv, type = 3)
-print(emmeans(mod_d_comb_wv, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_d_comb_wv, list(pairwise ~ dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_comb_wv, list(pairwise ~ visit), adjust = "mvt"))
-print(emmeans(mod_d_comb_wv, list(pairwise ~ group|dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_comb_wv, list(pairwise ~ dprime_type|group), adjust = "mvt"))
-print(emmeans(mod_d_comb_wv, list(pairwise ~ dprime_type|visit), adjust = "mvt"))
-print(emmeans(mod_d_comb_wv, list(pairwise ~ visit|dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_comb_wv, list(pairwise ~ group|dprime_type|visit), adjust = "mvt"))
-#check_model(mod_d_comb_wv)
-
+# plot d' BL1+BL2 Sep (w/ visit)
 plot_dprime_sep <- ggplot(dat_dprime_all_long, 
                              aes(x= dprime_type, y=dprime, 
                                  group = interaction(group,visit))) + 
@@ -338,20 +551,111 @@ plot_dprime_sep <- ggplot(dat_dprime_all_long,
         plot.title = element_text(face = "bold", size = 22))
 plot_dprime_sep
 
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Sep.png"), plot_dprime_sep, width = 6, height = 4)
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Sep.png"), plot_dprime_sep, width = 6, height = 4)
+
+#### LMER d' BL1+BL2 sep (w/ visit)-----
+mod_d_sep <- lmer(dprime ~ group * dprime_type * visit + age + (1|subj_idx), data = dat_dprime_all_long)
+anova(mod_d_sep, type = 3)
+r.squaredGLMM(mod_d_sep)
+print(emmeans(mod_d_sep, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ visit), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ group|dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ dprime_type|group), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ dprime_type|visit), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ visit|dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ group|dprime_type|visit), adjust = "mvt"))
+check_model(mod_d_sep)
 ```
 
-###d' w/o visit
+### RT
 ```{r}
-#### d'comb LMER wo visit -----
-mod_d_comb_wov <- lmer(dprime ~ group * dprime_type + (1|subj_idx) + age + gender, data = dat_dprime_all_long)
-anova(mod_d_comb_wov, type = 3)
-print(emmeans(mod_d_comb_wov, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_d_comb_wov, list(pairwise ~ dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_comb_wov, list(pairwise ~ group|dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_comb_wov, list(pairwise ~ dprime_type|group), adjust = "mvt"))
-#check_model(mod_d_comb_wov)
+### plot RT BL1+BL2 Sep (w/ visit) ----------
+plot_rt_sep <- ggplot(dat_topx_all, 
+                       aes(x= cttype, y=rt_mdn, 
+                           group = interaction(group,visit))) + 
+  stat_summary(fun="mean", geom="line", 
+               aes(color = group, linetype = visit), linewidth = 1.5) + 
+  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
+               width = 0.1, size = 1) + 
+  labs(title = "Reaction Times (RT)", 
+       y = "Median Correct RT (ms)", 
+       x = "Trial Type", color = "Group", linetype = "Visit") +
+  coord_cartesian(ylim = c(280, 600)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  scale_linetype_manual(values = c("solid", "dotted"), 
+                        labels = c("Visit 1", "Visit 2")) + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_rt_sep
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.png"), plot_rt_sep, width = 6, height = 4)
 
+### LMER RT BL1+BL2 sep (w/ visit) -----------
+mod_rt_sep <- lmer(rt_mdn ~ group * cttype * visit + age + (1|subj_idx), data = dat_topx_behav)
+anova(mod_rt_sep, type = 3)
+summary(mod_rt_sep)
+r.squaredGLMM(mod_rt_sep)
+print(emmeans(mod_rt_sep, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_rt_sep, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_rt_sep, list(pairwise ~ visit), adjust = "mvt"))
+print(emmeans(mod_rt_sep, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_rt_sep, list(pairwise ~ cttype|group), adjust = "mvt"))
+print(emmeans(mod_rt_sep, list(pairwise ~ group|visit), adjust = "mvt"))
+print(emmeans(mod_rt_sep, list(pairwise ~ visit|group), adjust = "mvt"))
+check_model(mod_rt_sep)
+```
+
+## BL1+BL2 comb -------
+### error
+```{r}
+# plot error BL1+BL2 Combined (w/o visit)
+plot_err_comb <- ggplot(dat_topx_all,
+                        aes(x= cttype, y=error, group = group)) +
+  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
+  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
+               width = 0.1, size = 1) +
+  labs(title = "Error Rates",
+       y = "Error Rate", x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(0.05, .35)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                   labels=c("Ctl", "EP")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_err_comb
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Comb.png"), plot_err_comb, width = 6, height = 4)
+
+### LMER Error BL1+BL2 Combined (w/o visit)
+mod_err_comb <- lmer(error ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav)
+anova(mod_err_comb, type = 3)
+summary(mod_err_comb)
+r.squaredGLMM(mod_err_comb)
+print(emmeans(mod_err_comb, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_err_comb, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_err_comb, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_err_comb, list(pairwise ~ cttype|group), adjust = "mvt"))
+check_model(mod_err_comb)
+```
+
+### d'
+```{r}
+# plot d' BL1+BL2 Comb (w/o visit)
 plot_dprime_comb <- ggplot(dat_dprime_all_long, 
                           aes(x= dprime_type, y=dprime, 
                               group = group)) + 
@@ -382,66 +686,29 @@ plot_dprime_comb <- ggplot(dat_dprime_all_long,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_dprime_comb
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Comb.png"), plot_dprime_comb, width = 6, height = 4)
 
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Comb.png"), plot_dprime_comb, width = 6, height = 4)
+#### LMER d' BL1+BL2 Combined (w/o visit)
+mod_d_comb <- lmer(dprime ~ group * dprime_type + age + (1|subj_idx), data = dat_dprime_all_long)
+anova(mod_d_comb, type = 3)
+r.squaredGLMM(mod_d_comb)
+print(emmeans(mod_d_comb, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_d_comb, list(pairwise ~ dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_comb, list(pairwise ~ group|dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_comb, list(pairwise ~ dprime_type|group), adjust = "mvt"))
+check_model(mod_d_comb)
+
+# exploring with t-tests
+# t.test(d_context ~ group, dat_dprime_all)
+# t.test(dat_dprime_all$group_n, dat_dprime_all$d_context, paired=FALSE, alternative = "two.sided")
+# t.test(d_expect ~ group, dat_dprime_all)
+# t.test(dat_dprime_all$group_n, dat_dprime_all$d_expect, paired=FALSE, alternative = "two.sided")
 ```
 
-### RT w/ visit
+
+### RT
 ```{r}
-### BL-Comb RT LMER w visit -----------
-mod_rt_comb_wv <- lmer(rt_mdn ~ group * cttype * visit + (1|subj_idx) + age + gender, data = dat_topx_behav)
-anova(mod_rt_comb_wv, type = 3)
-summary(mod_rt_comb_wv)
-print(emmeans(mod_rt_comb_wv, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wv, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wv, list(pairwise ~ visit), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wv, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wv, list(pairwise ~ cttype|group), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wv, list(pairwise ~ group|visit), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wv, list(pairwise ~ visit|group), adjust = "mvt"))
-
-### BL-Comb RT*Visit Graph ----------
-plot_rt_sep <- ggplot(dat_topx_all, 
-                       aes(x= cttype, y=rt_mdn, 
-                           group = interaction(group,visit))) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group, linetype = visit), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
-  labs(title = "Reaction Times (RT)", 
-       y = "Median Correct RT (ms)", 
-       x = "Trial Type", color = "Group", linetype = "Visit") +
-  coord_cartesian(ylim = c(280, 600)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                     labels=c("Ctl", "EP")) + 
-  scale_linetype_manual(values = c("solid", "dotted"), 
-                        labels = c("Visit 1", "Visit 2")) + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_rt_sep
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.png"), plot_rt_sep, width = 6, height = 4)
-```
-
-### RT w/o visit
-```{r}
-### BL-Comb RT LMER wo visit
-mod_rt_comb_wov <- lmer(rt_mdn ~ group * cttype + (1|subj_idx) + age + gender, data = dat_topx_behav)
-anova(mod_rt_comb_wov, type = 3)
-summary(mod_rt_comb_wov)
-print(emmeans(mod_rt_comb_wov, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wov, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wov, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_rt_comb_wov, list(pairwise ~ cttype|group), adjust = "mvt"))
-
+# plot RT BL1+BL2 comb (w/o visit)
 plot_rt_comb <- ggplot(dat_topx_all, 
                        aes(x= cttype, y=rt_mdn, group = group)) + 
   stat_summary(fun="mean", geom="line", 
@@ -465,18 +732,29 @@ plot_rt_comb <- ggplot(dat_topx_all,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_comb
+# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"), plot_rt_comb, width = 6, height = 4)
 
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"), plot_rt_comb, width = 6, height = 4)
+### LMER RT BL1+BL2 Comb (w/o visit)
+mod_rt_comb <- lmer(rt_mdn ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav)
+anova(mod_rt_comb, type = 3)
+summary(mod_rt_comb)
+r.squaredGLMM(mod_rt_comb)
+print(emmeans(mod_rt_comb, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_rt_comb, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_rt_comb, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_rt_comb, list(pairwise ~ cttype|group), adjust = "mvt"))
+check_model(mod_rt_comb)
 ```
 
 ### investigate age
 ```{r}
 # investigate age
-dat_topx_behav <- dat_topx_behav %>%
-  mutate(age_split = ifelse(age >= median(age), 1, 0)) %>% 
-  mutate(age_split = as.numeric(age_split))
-
-table(dat_topx_behav$age_split)/8
+# dat_topx_behav <- dat_topx_behav %>%
+#   mutate(age_split = ifelse(age >= median(age, , na.rm = TRUE), 1, 0),  .after = age) %>% 
+#   mutate(age_split = as.numeric(age_split))
+# 
+# table(dat_topx_behav$age_split)/8
+# median(dat_topx_behav$age)
 
 dat_topx_behav %>%
   group_by(age_split) %>%
@@ -488,271 +766,69 @@ mod_rtAge <- lmer(rt_mdn ~ age_split * cttype * visit + (1|subj_idx), data = dat
 anova(mod_rtAge)
 ```
 
-## BL1
-### error
-```{r}
-### BL1 Error LMER
-mod_err_bl1 <- lmer(error ~ group * cttype + (1|subj_idx) + age + gender, data = dat_topx_behav_bl1)
-anova(mod_err_bl1, type = 3)
-summary(mod_err_bl1)
-print(emmeans(mod_err_bl1, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_err_bl1, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_err_bl1, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_err_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
+# MODELED ANALYSES
 
-# plot error BL1
-plot_err_bl1 <- ggplot(dat_topx_bl1, 
-                        aes(x= cttype, y=error, group = group)) + 
-  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
-  labs(title = "Error Rates at Visit 1", 
-       y = "Error Rate", x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(0.05, .35)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                   labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(), 
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_err_bl1
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_BL1.png"), plot_err_bl1, width = 6, height = 4)
-```
-
-###d'
-```{r}
-#### d' BL1 LMER -----
-mod_d_bl1 <- lmer(dprime ~ group * dprime_type + (1|subj_idx) + age + gender, data = dat_dprime_bl1_long)
-anova(mod_d_bl1, type = 3)
-print(emmeans(mod_d_bl1, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_d_bl1, list(pairwise ~ dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_bl1, list(pairwise ~ group|dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_bl1, list(pairwise ~ dprime_type|group), adjust = "mvt"))
-#check_model(mod_d_bl1)
-
-plot_dprime_bl1 <- ggplot(dat_dprime_bl1_long, 
-                          aes(x= dprime_type, y=dprime, 
-                              group = group)) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group),
-               linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group),
-               size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
-               width = 0.05, size = 1) + 
-  labs(title = "D-prime (d') at Visit 1", 
-       y = "d' Value", 
-       x = "d' Type", color = "Group") +
-  coord_cartesian(ylim = c(2.0, 3.5)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                     labels=c("Ctl", "EP")) + 
-  scale_x_discrete(labels = c("d_context" = "d' Context", 
-                              "d_expect" = "d' Expectancy")) +
-  scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
-                     labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_dprime_bl1
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL1.png"), plot_dprime_bl1, width = 6, height = 4)
-```
-
-### RT
-```{r}
-### BL1 RT LMER 
-mod_rt_bl1 <- lmer(rt_mdn ~ group * cttype + (1|subj_idx) + age + gender, data = dat_topx_behav_bl1)
-anova(mod_rt_bl1, type = 3)
-summary(mod_rt_bl1)
-print(emmeans(mod_rt_bl1, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_rt_bl1, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_rt_bl1, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_rt_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
-
-plot_rt_bl1 <- ggplot(dat_topx_bl1, 
-                       aes(x= cttype, y=rt_mdn, group = group)) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
-  labs(title = "Reaction Times (RT) at Visit 1", 
-       y = "Median Correct RT (ms)", 
-       x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(280, 600)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                     labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_rt_bl1
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_BL1.png"), plot_rt_bl1, width = 6, height = 4)
-```
-
-## BL2
-### error
-```{r}
-### BL2 Error LMER
-mod_err_bl2 <- lmer(error ~ group * cttype + (1|subj_idx) + age + gender, data = dat_topx_behav_bl2)
-anova(mod_err_bl2, type = 3)
-summary(mod_err_bl2)
-print(emmeans(mod_err_bl2, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_err_bl2, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_err_bl2, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_err_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
-
-# plot error BL2
-plot_err_bl2 <- ggplot(dat_topx_bl2, 
-                        aes(x= cttype, y=error, group = group)) + 
-  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
-  labs(title = "Error Rates at Visit 2", 
-       y = "Error Rate", x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(0.05, .35)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                   labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(), 
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_err_bl2
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_BL2.png"), plot_err_bl2, width = 6, height = 4)
-```
-
-###d'
-```{r}
-#### d' BL2 LMER -----
-mod_d_bl2 <- lmer(dprime ~ group * dprime_type + (1|subj_idx) + age + gender, data = dat_dprime_bl2_long)
-anova(mod_d_bl2, type = 3)
-print(emmeans(mod_d_bl2, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_d_bl2, list(pairwise ~ dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_bl2, list(pairwise ~ group|dprime_type), adjust = "mvt"))
-print(emmeans(mod_d_bl2, list(pairwise ~ dprime_type|group), adjust = "mvt"))
-#check_model(mod_d_bl2)
-
-plot_dprime_bl2 <- ggplot(dat_dprime_bl2_long, 
-                          aes(x= dprime_type, y=dprime, 
-                              group = group)) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group),
-               linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group),
-               size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
-               width = 0.05, size = 1) + 
-  labs(title = "D-prime (d') at Visit 2", 
-       y = "d' Value", 
-       x = "d' Type", color = "Group") +
-  coord_cartesian(ylim = c(2.0, 3.5)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                     labels=c("Ctl", "EP")) + 
-  scale_x_discrete(labels = c("d_context" = "d' Context", 
-                              "d_expect" = "d' Expectancy")) +
-  scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
-                     labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_dprime_bl2
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL2.png"), plot_dprime_bl2, width = 6, height = 4)
-```
-
-### RT
-```{r}
-### BL2 RT LMER 
-mod_rt_bl2 <- lmer(rt_mdn ~ group * cttype + (1|subj_idx) + age + gender, data = dat_topx_behav_bl2)
-anova(mod_rt_bl2, type = 3)
-summary(mod_rt_bl2)
-print(emmeans(mod_rt_bl2, list(pairwise ~ group), adjust = "mvt"))
-print(emmeans(mod_rt_bl2, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_rt_bl2, list(pairwise ~ group|cttype), adjust = "mvt"))
-print(emmeans(mod_rt_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
-
-plot_rt_bl2 <- ggplot(dat_topx_bl2, 
-                       aes(x= cttype, y=rt_mdn, group = group)) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
-  labs(title = "Reaction Times (RT) at Visit 2", 
-       y = "Median Correct RT (ms)", 
-       x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(280, 600)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                     labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_rt_bl2
-
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_BL2.png"), plot_rt_bl2, width = 6, height = 4)
-```
-
-# Modeled analyses
 ## ddm functions
-###lmer_plot_comb
-###lmer_plot_sep
-###lmer_plot_bl
+lmer_bl, lmer_bl_sep, lmer_check, plot_bl, plot_bl_sep
 ```{r}
-### write DDM LMER functions ---------------------
-# lmer without visit, plot without visit
-lmer_plot_comb <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE) {
-  model <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), dat)
+# run lmer for single dataset (BL1, BL2 or BL1-BL2 merged)
+lmer_bl <- function(dat,  model_name = "model_output", posthoc = FALSE) {
+  model <- lmer(mean ~ group * cttype + age + (1|subj_idx), dat) # group:cttype
+  assign(model_name, model, envir = .GlobalEnv)
   print(anova(model, type = 3))
+  print(summary(model))
   if(posthoc == TRUE) {
     print(emmeans(model, list(pairwise ~ group), adjust = "mvt"))
     print(emmeans(model, list(pairwise ~ cttype), adjust = "mvt"))
     print(emmeans(model, list(pairwise ~ group|cttype), adjust = "mvt"))
     print(emmeans(model, list(pairwise ~ cttype|group), adjust = "mvt"))
-    }
-  plot <- ggplot(dat, aes(x= cttype, y=mean, group = group)) + 
+  }
+}
+
+# run lmer for multiple visits (BL1 and BL2)
+lmer_bl_sep <- function(dat, model_name = "model_output", posthoc = FALSE) {
+  model <- lmer(mean ~ group * cttype * visit + age + (1|subj_idx), dat)
+  assign(model_name, model, envir = .GlobalEnv)  # Save the model in the global environment
+  print(anova(model, type = 3))
+  print(summary(model))
+  if(posthoc == TRUE) {
+    print(emmeans(model, list(pairwise ~ group), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ cttype), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ visit), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ group|cttype), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ cttype|group), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ group|visit), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ visit|group), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ cttype|visit), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ visit|cttype), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ group|cttype|visit), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ cttype|group|visit), adjust = "mvt"))
+    print(emmeans(model, list(pairwise ~ visit|group|cttype), adjust = "mvt"))
+  }
+}
+
+# check lmer model fit
+lmer_check <- function(model, title_lab) {
+  # calculate variance inflation
+  print(car::vif(model))
+  print(model_parameters(model))
+  # check model and save plots
+  check_model(model)
+  png(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_ModelCheck_", title_lab, ".png"), 
+      width = 500, height = 500)
+  plot(check_model(model))
+  dev.off()
+}
+
+# plot single dataset (BL1, BL2 or BL1-BL2 merged)
+plot_bl <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
+  dat_dummy <- dat %>%
+    mutate(mean = if_else(cttype == "AY" & parameter == "v", -1 * mean, mean))
+  plot <- ggplot(dat_dummy, aes(x= cttype, y=mean, group = group)) + 
     stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) + 
     stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
     stat_summary(fun.data = mean_se, geom = "errorbar", 
-                 aes(color = group), width = 0.1, 
-                 size = 1) + 
+                 aes(color = group), width = 0.1, size = 1) + 
     labs(title = title_lab, y = param_lab, 
          x = "Trial Type", color = "Group") +
     coord_cartesian(ylim = c(ymin, ymax)) +
@@ -768,29 +844,14 @@ lmer_plot_comb <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALS
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_Comb.png"), plot, width = 6, height = 4)
+  #ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"), plot, width = 6, height = 4)
 }
 
-# lmer and plot with visit
-lmer_plot_sep <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE) {
-  model <- lmer(mean ~ group * cttype * visit + age + gender + (1|subj_idx), dat)
-  print(anova(model, type = 3))
-  if(posthoc == TRUE) {
-    print(emmeans(model, list(pairwise ~ group), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ cttype), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ visit), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ group|cttype), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ cttype|group), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ group|visit), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ visit|group), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ cttype|visit), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ visit|cttype), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ group|cttype|visit), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ cttype|group|visit), adjust = "mvt"))
-    print(emmeans(model, list(pairwise ~ visit|group|cttype), adjust = "mvt"))
-
-  }
-  plot <- ggplot(dat, aes(x= cttype, y=mean, 
+# plot multiple visits (BL1 and BL2)
+plot_bl_sep <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
+  dat_dummy <- dat %>%
+    mutate(mean = if_else(cttype == "AY" & parameter == "v", -1 * mean, mean))
+  plot <- ggplot(dat_dummy, aes(x= cttype, y=mean, 
                    group = interaction(group,visit))) + 
     stat_summary(fun="mean", geom="line", 
                  aes(color = group, linetype = visit), size = 1.5) + 
@@ -815,115 +876,98 @@ lmer_plot_sep <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_Sep.png"), plot, width = 6, height = 4)
+  #ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"), plot, width = 6, height = 4)
 }
+```
 
-# lmer_plot_bl <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE, visit = "BL1") {
-#   
-#   # Specify model based on visit
-#   if (visit == "BL1") {
-#     model <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), dat)
-#     x_label <- "Trial Type at Visit 1"
-#     file_suffix <- "_BL1"
-#   } else if (visit == "BL2") {
-#     model <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), dat)
-#     x_label <- "Trial Type at Visit 2"
-#     file_suffix <- "_BL2"
-#   } else {
-#     stop("Invalid visit; please set visit = 'BL1' or 'BL2'.")
-#   }
-#   
-#   # Print ANOVA results
-#   print(anova(model, type = 3)) 
-#   
-#   # Posthoc testing
-#   if(posthoc == TRUE) {
-#     print(emmeans(model, list(pairwise ~ group), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ cttype), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ group|cttype), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ cttype|group), adjust = "mvt"))
-#   }
-#   
-#   # Create plot
-#   plot <- ggplot(dat, aes(x = cttype, y = mean, group = group)) + 
-#     stat_summary(fun = "mean", geom = "line", 
-#                  aes(color = group), linewidth = 1.5) + 
-#     stat_summary(fun = "mean", geom = "point", aes(color = group), size = 3) +
-#     stat_summary(fun.data = mean_se, geom = "errorbar", 
-#                  aes(color = group), width = 0.1, size = 1) + 
-#     labs(title = title_lab, y = param_lab, x = x_label, color = "Group") +
-#     coord_cartesian(ylim = c(ymin, ymax)) +
-#     scale_color_manual(values = c("#2C737F", "#AA8829"), 
-#                        labels = c("Ctl", "EP")) + 
-#     theme(panel.grid.major = element_blank(), 
-#           panel.grid.minor = element_blank(),
-#           panel.background = element_blank(), 
-#           axis.line = element_line(colour = "black"), 
-#           axis.text = element_text(face = "bold", size = 16),
-#           axis.title = element_text(face = "bold", size = 20),
-#           legend.text = element_text(face = "bold", size = 14),
-#           legend.title = element_text(face = "bold", size = 16),
-#           plot.title = element_text(face = "bold", size = 22))
-#   
-#   # Print and save plot
-#   print(plot)
-#   ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, file_suffix, ".png"), plot, width = 6, height = 4)
-# }
-
-
-# # lmer and plot BL1
-# lmer_plot_bl1 <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE) {
-#   model <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), dat)
-#   print(anova(model, type = 3))
-#   if(posthoc == TRUE) {
-#     print(emmeans(model, list(pairwise ~ group), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ cttype), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ group|cttype), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ cttype|group), adjust = "mvt"))
-#     }
-#   plot <- ggplot(dat, aes(x= cttype, y=mean, group = group)) +
-#     stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
-#     stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
-#     stat_summary(fun.data = mean_se, geom = "errorbar",
-#                  aes(color = group), width = 0.1,
-#                  size = 1) +
-#     labs(title = title_lab, y = param_lab,
-#          x = "Trial Type at Visit 1", color = "Group") +
-#     coord_cartesian(ylim = c(ymin, ymax)) +
-#     scale_color_manual(values=c("#2C737F", "#AA8829"),
-#                        labels=c("Ctl", "EP")) +
-#     theme(panel.grid.major = element_blank(),
-#           panel.grid.minor = element_blank(),
-#           panel.background = element_blank(),
-#           axis.line = element_line(colour = "black"),
-#           axis.text = element_text(face="bold", size = 16),
-#           axis.title = element_text(face="bold", size = 20),
-#           legend.text = element_text(face="bold", size = 14),
-#           legend.title = element_text(face = "bold", size = 16),
-#           plot.title = element_text(face = "bold", size = 22))
-#   print(plot)
-#   ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_BL1.png"), plot, width = 6, height = 4)
-# }
+## testing sandbox (v)
+BL1 only
+```{r}
+# # decision threshold - BL1 only ----------------------------------
 # 
-# # lmer and plot BL2
-# lmer_plot_bl2 <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE) {
-#   model <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), dat)
-#   print(anova(model, type = 3))
-#   if(posthoc == TRUE) {
-#     print(emmeans(model, list(pairwise ~ group), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ cttype), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ group|cttype), adjust = "mvt"))
-#     print(emmeans(model, list(pairwise ~ cttype|group), adjust = "mvt"))
-#     }
-#   plot <- ggplot(dat, aes(x= cttype, y=mean, group = group)) + 
-#     stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) + 
-#     stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
-#     stat_summary(fun.data = mean_se, geom = "errorbar", 
+# # full model - A (with interaction)
+# mod_a_bl1_1 <- lmer(mean ~ group * cttype + (1|subj_idx), a_dat_bl1) 
+# anova(mod_a_bl1_1, type = 3)
+# summary(mod_a_bl1_1)
+# car::vif(mod_a_bl1_1) 
+# plot(mod_a_bl1_1, resid(.) ~ fitted(.))
+# qqnorm(resid(mod_a_bl1_1)); qqline(resid(mod_a_bl1_1))
+# check_model(mod_a_bl1_1)
+# 
+# # simplified model - A without interation
+# mod_a_bl1_2 <- lmer(mean ~ group + cttype + (1|subj_idx), a_dat_bl1) 
+# anova(mod_a_bl1_2, type = 3)
+# summary(mod_a_bl1_2)
+# car::vif(mod_a_bl1_2) 
+# plot(mod_a_bl1_2, resid(.) ~ fitted(.)) 
+# qqnorm(resid(mod_a_bl1_2)); qqline(resid(mod_a_bl1_2)) 
+# check_model(mod_a_bl1_2)
+# 
+# 
+# 
+# # drift rate - BL1 only ----------------------------------
+# 
+# # full model - V
+# # REML = 1123.8 (lower is better)
+# # age and gender aren't significant - remove them from model
+# # interaction group*cttype has a high VIF (22.7, >10 is high), indicates multicollinearity
+# mod_v_bl1_1 <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), v_dat_bl1) 
+# anova(mod_v_bl1_1, type = 3)
+# summary(mod_v_bl1_1)
+# car::vif(mod_v_bl1_1) # calculates variance-inflation and generalized VI factors 
+# # plots residuals to test for normality
+# plot(mod_v_bl1_1, resid(.) ~ fitted(.)) # should be randomly distributed along 0 y axis
+# qqnorm(resid(mod_v_bl1_1)); qqline(resid(mod_v_bl1_1)) # should follow qqline
+# 
+# # test drift rates for normality - none pass shapiro-wilk, all are non-normal
+# # AX
+# v_dat_bl1_ax <- filter(v_dat_bl1, cttype == "AX")
+# summary(v_dat_bl1_ax$mean)
+# ggdensity(v_dat_bl1_ax$mean)
+# shapiro.test(v_dat_bl1_ax$mean)
+# # AY
+# v_dat_bl1_ay <- filter(v_dat_bl1, cttype == "AY")
+# ggdensity(v_dat_bl1_ay$mean)
+# shapiro.test(v_dat_bl1_ay$mean)
+# # BX
+# v_dat_bl1_bx <- filter(v_dat_bl1, cttype == "BX")
+# ggdensity(v_dat_bl1_bx$mean)
+# shapiro.test(v_dat_bl1_bx$mean)
+# # BY
+# v_dat_bl1_by <- filter(v_dat_bl1, cttype == "BY")
+# ggdensity(v_dat_bl1_by$mean)
+# shapiro.test(v_dat_bl1_by$mean)
+# 
+# # posthocs for model 1
+# # emmeans(mod_v_bl1_1, list(pairwise ~ group), adjust = "mvt")
+# # emmeans(mod_v_bl1_1, list(pairwise ~ cttype), adjust = "mvt")
+# # emmeans(mod_v_bl1_1, list(pairwise ~ group|cttype), adjust = "mvt")
+# # emmeans(mod_v_bl1_1, list(pairwise ~ cttype|group), adjust = "mvt")
+# 
+# # simplified model - final version?
+# # REML = 1149.2
+# # singular fit: random effects structure is over-parameterized or there is little variability in random effect
+# mod_v_bl1 <- lmer(mean ~ group * cttype + (1|subj_idx), v_dat_bl1) 
+# # mod_v_bl1 <- lm(mean ~ group * cttype, v_dat_bl1) - would help with singular fit issue, but isn't fitting any better otherwise... don't use
+# anova(mod_v_bl1)
+# summary(mod_v_bl1)
+# car::vif(mod_v_bl1) # calculates variance-inflation and generalized VI factors 
+# # plots residuals to test for normality
+# plot(mod_v_bl1, resid(.) ~ fitted(.)) # should be randomly distributed along 0 y axis
+# qqnorm(resid(mod_v_bl1)); qqline(resid(mod_v_bl1_1)) # should follow qqline
+# model_parameters(mod_v_bl1)
+# check_model(mod_v_bl1)
+# 
+# # plot drift rate at BL1
+# plot_v_bl1 <- ggplot(v_dat_bl1, aes(x= cttype, y=mean, group = group)) + 
+#   stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) + 
+#   stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
+#   stat_summary(fun.data = mean_se, geom = "errorbar", 
 #                  aes(color = group), width = 0.1, 
 #                  size = 1) + 
-#     labs(title = title_lab, y = param_lab, 
-#          x = "Trial Type at Visit 2", color = "Group") +
-#     coord_cartesian(ylim = c(ymin, ymax)) +
+#     labs(title = "Drift Rates at Visit 1", y = "Drift Rates (v)", 
+#          x = "Trial Type", color = "Group") +
+#     coord_cartesian(ylim = c(.7, 3)) +
 #     scale_color_manual(values=c("#2C737F", "#AA8829"),
 #                        labels=c("Ctl", "EP")) + 
 #     theme(panel.grid.major = element_blank(), 
@@ -935,95 +979,181 @@ lmer_plot_sep <- function(dat, title_lab, param_lab, ymin, ymax, posthoc = FALSE
 #           legend.text = element_text(face="bold", size = 14),
 #           legend.title = element_text(face = "bold", size = 16),
 #           plot.title = element_text(face = "bold", size = 22))
-#   print(plot)
-#   ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", title_lab, "_BL2.png"), plot, width = 6, height = 4)
-# }
+# plot_v_bl1
 ```
 
-## transform and subset ddm data
+testing sandbox (v)
+BL1 and BL2
 ```{r}
-# transform drift rates ---------
-reformat_ddm_var <- function(data) {
-data[data$cttype == "AY" & data$parameter == "v",]$mean <- (-1) * data[data$cttype == "AY" & data$parameter == "v",]$mean
-return(as.data.frame(data))
-}
-
-dat_ddm_behav <- reformat_ddm_var(dat_ddm_behav)
-# write.csv(dat_ddm_behav,file=paste0("/Users/arend103/Documents/umn_work/topx_analyses/topx_ddm/data/archive_ddm_and_behav_data/topx_ddm_behav_",gsub("-", "", Sys.Date()), ".csv"), row.names = FALSE)
-
-# subset data by parameter for BL1 + BL2  ---------------------
-v_dat_all = filter(dat_ddm_behav, parameter == 'v')
-a_dat_all = filter(dat_ddm_behav, parameter == 'a')
-t_dat_all = filter(dat_ddm_behav, parameter == 't')
-z_dat_all = filter(dat_ddm_behav, parameter == 'z') 
-
-# subset data by parameter for BL1 ---------------------
-v_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 'v')
-a_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 'a')
-t_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 't')
-z_dat_bl1 = filter(dat_ddm_behav_bl1, parameter == 'z') 
-
-# subset data by parameter for BL2 ---------------------
-v_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 'v')
-a_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 'a')
-t_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 't')
-z_dat_bl2 = filter(dat_ddm_behav_bl2, parameter == 'z') 
-
-### DDM descriptives ----------
-ddmTable <- dat_ddm_behav %>% 
-  group_by(group, visit, parameter, cttype) %>%
-  summarise(
-    param_mean = round(mean(mean, na.rm = TRUE),2),
-    param_sd = round(sd(mean, na.rm = TRUE),2))
-ddmTable
-```
-## drift rate (v)
-### v comb
-```{r}
-## run plots -----------
-# v - all data
-lmer_plot_comb(v_dat_all, "Drift Rates", "Drift Rate (v)", 
-               0.7, 3, posthoc = TRUE)
-```
-
-### v sep
-```{r}
-lmer_plot_sep(v_dat_all, "Drift Rates", "Drift Rate (v)", 
-              0.7, 3, posthoc = TRUE)
-```
-
-### v BL1 - BROKEN
-```{r}
-# lmer_plot_bl(v_dat_bl1, "Drift Rates", "Drift Rate (v)",
-#              0.7, 3, posthoc = TRUE, visit = "BL1")
+# # drift rate - combined BL1 and BL2 ----------------------------------
+# # full model (REML = 2211.4)
+# mod_v_comb1 <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), v_dat_all) 
+# anova(mod_v_comb1, type = 3)
+# summary(mod_v_comb1)
+# car::vif(mod_v_comb1) # calculates variance-inflation and generalized variance-inflation factors 
+# # plots residuals to test for normality
+# plot(mod_v_comb1, resid(.) ~ fitted(.)) # should be randomly distributed along 0 y axis
+# qqnorm(resid(mod_v_comb1)); qqline(resid(mod_v_comb1)) # should follow qqline
 # 
-# lmer_plot_bl1(v_dat_bl1, "Drift Rates", "Drift Rate (v)",
-#              0.7, 3, posthoc = TRUE)
+# # remove age + gender (REML = 2279.8)
+# # simpler model, covariates were not significant before
+# # fixed effects more stable = estimates and standard errors appear more reasonable, without extreme values
+# # however, residual variance is still high, correlations among fixed effects is still high (GVIF < 10 = concern for collinearity)
+# mod_v_comb2 <- lmer(mean ~ group * cttype + (1|subj_idx), v_dat_all) 
+# anova(mod_v_comb2, type = 3)
+# summary(mod_v_comb2)
+# car::vif(mod_v_comb2)
+# plot(mod_v_comb2, resid(.) ~ fitted(.))
+# qqnorm(resid(mod_v_comb2)); qqline(resid(mod_v_comb2))
+# 
+# # remove interaction (REML = 2344.7)
+# # fixes multicollinearity problem
+# mod_v_comb3 <- lmer(mean ~ group + cttype + (1|subj_idx), v_dat_all) 
+# anova(mod_v_comb3, type = 3)
+# summary(mod_v_comb3)
+# car::vif(mod_v_comb3)
+# plot(mod_v_comb3, resid(.) ~ fitted(.))
+# qqnorm(resid(mod_v_comb3)); qqline(resid(mod_v_comb2))
 ```
 
-## decision threshold (a)
-### a comb
+## BL1----------------------
+### drift rate (v)
 ```{r}
-# a - all data
-lmer_plot_comb(a_dat_all, "Decision Thresholds", 
-           "Decision Threshold (a)", 0.47, 0.63, posthoc = TRUE) 
+plot_bl(v_dat_bl1, "Drift Rates at Visit 1", "Drift Rate (v)", "DriftRate_BL1", .7, 3)
+lmer_bl(v_dat_bl1, "mod_v_bl1", posthoc = FALSE)
+lmer_check(mod_v_bl1, "v_bl1")
 ```
 
-### a sep
+### decision threshold (a)
 ```{r}
-lmer_plot_sep(a_dat_all, "Decision Thresholds",
-                 "Decision Threshold (a)", 0.47, 0.63, posthoc = TRUE) 
+plot_bl(a_dat_bl1, "Decision Thresholds at Visit 1", "Decision Threshold (a)", "DecisionThreshold_BL1", .47, .63)
+lmer_bl(a_dat_bl1, "mod_a_bl1", posthoc = FALSE)
+lmer_check(mod_a_bl1, "a_bl1")
 ```
 
-### investigate age
+### non-decision time (t)
 ```{r}
-a_dat_all <- a_dat_all %>%
-  mutate(age_split = ifelse(age >= median(age), 1, 0)) %>% 
-  mutate(age_split = as.numeric(age_split))
+plot_bl(t_dat_bl1, "Non-Decision Times at Visit 1", "Non-Decision Time (t)", "NonDecisionTime_BL1", .17, .25)
+lmer_bl(t_dat_bl1, "mod_t_bl1", posthoc = FALSE)
+lmer_check(mod_t_bl1, "t_bl1")
+```
 
-a_dat_all %>%
-  group_by(age_split) %>%
-  summarize(mean = mean(mean, na.rm = TRUE))
+### bias (z)
+```{r}
+plot_bl(z_dat_bl1, "Degrees of Bias at Visit 1", "Degree of Bias (w)", "Bias_BL1", .5, .65)
+lmer_bl(z_dat_bl1, "mod_z_bl1", posthoc = FALSE)
+lmer_check(mod_z_bl1, "z_bl1")
+```
+
+
+## BL2-----------------------
+### drift rate (v)
+```{r}
+plot_bl(v_dat_bl2, "Drift Rates at Visit 2", "Drift Rate (v)", "DriftRate_BL2", .7, 3)
+lmer_bl(v_dat_bl2, "mod_v_bl2", posthoc = FALSE)
+lmer_check(mod_v_bl2, "v_bl2")
+```
+
+### decision threshold (a)
+```{r}
+plot_bl(a_dat_bl2, "Decision Thresholds at Visit 2", "Decision Threshold (a)", "DecisionThreshold_BL2", .47, .63)
+lmer_bl(a_dat_bl2, "mod_a_bl2", posthoc = FALSE)
+lmer_check(mod_a_bl2, "a_bl2")
+```
+
+### non-decision time (t)
+```{r}
+plot_bl(t_dat_bl2, "Non-Decision Times at Visit 2", "Non-Decision Time (t)", "NonDecisionTime_BL2", .17, .25)
+lmer_bl(t_dat_bl2, "mod_t_bl2", posthoc = FALSE)
+lmer_check(mod_t_bl2, "t_bl2")
+```
+
+### bias (z)
+```{r}
+plot_bl(z_dat_bl2, "Degrees of Bias at Visit 2", "Degree of Bias (w)", "Bias_BL2", .5, .65)
+lmer_bl(z_dat_bl2, "mod_z_bl2", posthoc = FALSE)
+lmer_check(mod_z_bl2, "z_bl2")
+```
+
+## BL+BL2 Comb --------
+
+### drift rate (v)
+```{r}
+plot_bl(v_dat_all, "Drift Rates", "Drift Rate (v)", "DriftRate_Comb", .7, 3)
+lmer_bl(v_dat_all, "mod_v_comb", posthoc = TRUE)
+r.squaredGLMM(mod_v_comb)
+lmer_check(mod_v_comb, "v_comb")
+```
+
+### decision threshold (a)
+```{r}
+plot_bl(a_dat_all, "Decision Thresholds", "Decision Threshold (a)", "DecisionThreshold_Comb", .47, .63)
+lmer_bl(a_dat_all, "mod_a_comb", posthoc = TRUE)
+r.squaredGLMM(mod_a_comb)
+lmer_check(mod_a_comb, "a_comb")
+```
+
+### non-decision time (t)
+```{r}
+plot_bl(t_dat_all, "Non-Decision Times", "Non-Decision Time (t)", "NonDecisionTime_Comb", .17, .25)
+lmer_bl(t_dat_all, "mod_t_comb", posthoc = TRUE)
+r.squaredGLMM(mod_t_comb)
+lmer_check(mod_t_comb, "t_comb")
+```
+
+### bias (z)
+```{r}
+plot_bl(z_dat_all, "Degrees of Bias", "Degree of Bias (w)", "Bias_Comb", .5, .65)
+lmer_bl(z_dat_all, "mod_z_comb", posthoc = TRUE)
+r.squaredGLMM(mod_z_comb)
+lmer_check(mod_z_comb, "z_comb")
+```
+
+## BL+BL2 Sep --------
+
+### drift rate (v)
+```{r}
+plot_bl_sep(v_dat_all, "Drift Rates at Visit 1 & 2", "Drift Rate (v)", "DriftRate_Sep", .7, 3)
+lmer_bl_sep(v_dat_all, "mod_v_sep", posthoc = TRUE)
+r.squaredGLMM(mod_v_sep)
+lmer_check(mod_v_sep, "v_sep")
+```
+
+### decision threshold (a)
+```{r}
+plot_bl_sep(a_dat_all, "Decision Thresholds at Visit 1 & 2", "Decision Threshold (a)", "DecisionThreshold_Sep", .47, .63)
+lmer_bl_sep(a_dat_all, "mod_a_sep", posthoc = TRUE)
+r.squaredGLMM(mod_a_sep)
+lmer_check(mod_a_sep, "a_sep")
+```
+
+### non-decision time (t)
+```{r}
+plot_bl_sep(t_dat_all, "Non-Decision Times at Visit 1 & 2", "Non-Decision Time (t)", "NonDecisionTime_Sep", .17, .25)
+lmer_bl_sep(t_dat_all, "mod_t_sep", posthoc = TRUE)
+r.squaredGLMM(mod_t_sep)
+lmer_check(mod_t_sep, "t_sep")
+```
+
+### bias (z)
+```{r}
+plot_bl_sep(z_dat_all, "Degrees of Bias at Visit 1 & 2", "Degree of Bias (w)", "Bias_Sep", .5, .65)
+lmer_bl_sep(z_dat_all, "mod_z_sep", posthoc = TRUE)
+r.squaredGLMM(mod_z_sep)
+lmer_check(mod_z_sep, "z_sep")
+```
+
+
+## other -------------------
+### investigate age (a)
+```{r}
+# a_dat_all <- a_dat_all %>%
+#   mutate(age_split = ifelse(age >= median(age, na.rm = TRUE), 1, 0)) %>% 
+#   mutate(age_split = as.numeric(age_split))
+# 
+# a_dat_all %>%
+#   group_by(age_split) %>%
+#   summarize(mean = mean(mean, na.rm = TRUE))
 
 t.test(a_dat_all$age_split, a_dat_all$mean, na.rm = TRUE)
 
@@ -1036,25 +1166,11 @@ anova(mod_a_Age)
 
 ```
 
-## non-decision time (t)
-### t comb
-```{r}
-# t - all data
-lmer_plot_comb(t_dat_all, "Non-Decision Times", 
-           "Non-Decision Time (t)", 0.17, 0.25, posthoc = TRUE) 
-```
-
-### t sep
-```{r}
-lmer_plot_sep(t_dat_all, "Non-Decision Times", 
-                 "Non-Decision Time (t)", 0.17, 0.25, posthoc = TRUE)
-```
-
-### investigate age
+### investigate age (t)
 ```{r}
 # investigate age
 t_dat_all <- t_dat_all %>%
-  mutate(age_split = ifelse(age >= median(age), 1, 0)) %>% 
+  mutate(age_split = ifelse(age >= median(age, , na.rm = TRUE), 1, 0)) %>% 
   mutate(age_split = as.numeric(age_split))
 
 t.test(t_dat_all$age_split, t_dat_all$mean, na.rm = TRUE)
@@ -1064,67 +1180,97 @@ t.test(t_dat_all$age_split, t_dat_all$mean, na.rm = TRUE)
 #   labs(x = "Age", y = "Non-decision time", title = "1 = older, 0 = younger")
 ```
 
-## bias (z)
-### z comb
-```{r}
-# z - all data
-lmer_plot_comb(z_dat_all, "Degrees of Bias", 
-           "Degree of Bias (w)", 0.5, 0.65, posthoc = TRUE) 
-```
-
-### z sep
-```{r}
-lmer_plot_sep(z_dat_all, "Degrees of Bias", 
-                 "Degree of Bias (w)", 0.5, 0.65, posthoc = TRUE)
-
-# investigate gender
-# z_dat_all_trans$gender <- as.factor(z_dat_all_trans$gender)
-# anova_result <- aov(mean ~ gender, data = z_dat_all_trans)
-# summary(anova_result)
-# TukeyHSD(anova_result) # 1 = woman, 2 = man, 3 = enby/other
-```
-
-# correlations - 14 param
-## ddm matrix - all
+# correlations - 14 vars
+## comb
 ```{r}
 # filter ddm data (long form) to only include ddm variables, for correlation matrix
-dat_cor_all <- dat_ddm_all_long %>% 
+dat_cor_comb <- dat_ddm_all_long %>% 
   select(-c(participant_id, visit))
 
-# run the correlations
-dat_cor_all <- cor(dat_cor_all)
+# run the correlations and rename variables
+dat_cor_comb <- cor(dat_cor_comb)
+colnames(dat_cor_comb) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+rownames(dat_cor_comb) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
 
 # plot a correlation matrix
-corrplot(dat_cor_all, method = "color", addCoef.col = 'white')
+corrplot(dat_cor_comb, 
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 0.65,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 0.55,  # Coefficient text size
+         title = "Parameter Correlations (Combined Visit 1+2)", # title
+         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
 ```
 
-## ddm matrix - bl1
+## bl1
 ```{r}
+# filter data to BL1 DDM variables only
 dat_ddm_bl1_long <- dat_ddm_all_long %>% 
   filter(visit == "BL1")
-
 dat_cor_bl1 <- dat_ddm_bl1_long %>% 
   select(-c(participant_id, visit))
 
+# run correlation and rename variables
 dat_cor_bl1 <- cor(dat_cor_bl1)
-corrplot(dat_cor_bl1, method = "color", addCoef.col = 'white')
+colnames(dat_cor_bl1) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+rownames(dat_cor_bl1) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+
+# plot the correlation matrix
+corrplot(dat_cor_bl1, 
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 0.65,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 0.55,  # Coefficient text size
+         title = "Parameter Correlations at Visit 1", # title
+         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
   
 ```
 
-## ddm matrix - bl2
+## bl2
 ```{r}
+# # filter data to BL2 DDM variables only
 dat_ddm_bl2_long <- dat_ddm_all_long %>% 
   filter(visit == "BL2")
-
 dat_cor_bl2 <- dat_ddm_bl2_long %>% 
   select(-c(participant_id, visit))
 
+# run correlation and rename variables
 dat_cor_bl2 <- cor(dat_cor_bl2)
-corrplot(dat_cor_bl2, method = "color", addCoef.col = 'white')
+colnames(dat_cor_bl2) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+rownames(dat_cor_bl2) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
 
+# plot the correlation matrix
+corrplot(dat_cor_bl2, 
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 0.65,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 0.55,  # Coefficient text size
+         title = "Parameter Correlations at Visit 1", # title
+         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
 ```
 
-# correlations - 4 param
+# correlations - 4 vars
 ## calculate intercepts
 ```{r}
 # read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
@@ -1162,24 +1308,36 @@ dat_ddm_bl1_intc <- filter(dat_ddm_bl1_intc, participant_id %in% common_ids)
 dat_ddm_bl2_intc <- filter(dat_ddm_bl2_intc, participant_id %in% common_ids)
 
 # Combine both datasets
-dat_ddm_all_intc <- bind_rows(dat_ddm_bl1_intc, dat_ddm_bl2_intc)
+dat_ddm_comb_intc <- bind_rows(dat_ddm_bl1_intc, dat_ddm_bl2_intc)
 ```
 
-## ddm intc matrix - all
+## comb
 ```{r}
-dat_cor_all_intc <- dat_ddm_all_intc %>% 
+# filter data to intercepts only
+dat_cor_comb_intc <- dat_ddm_comb_intc %>% 
   mutate(v = v_intc + v_ppt,
          a = a_intc + a_ppt,
          t = t_intc + t_ppt,
          z = z_intc + z_ppt) %>% 
   select(v, a, t, z)
 
-dat_cor_all_intc <- cor(dat_cor_all_intc)
-corrplot(dat_cor_all_intc, method = "color", addCoef.col = 'white')
+# run correlations
+dat_cor_comb_intc <- cor(dat_cor_comb_intc)
+
+# plot the correlation matrix
+corrplot(dat_cor_comb_intc, 
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 1,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 1,  # Coefficient text size
+         title = "Parameter Correlations at Visit 1", # title
+         mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
-## ddm intc matrix - bl1
+## bl1
 ```{r}
+# filter data
 dat_cor_bl1_intc <- dat_ddm_bl1_intc %>% 
   mutate(v = v_intc + v_ppt,
          a = a_intc + a_ppt,
@@ -1187,12 +1345,23 @@ dat_cor_bl1_intc <- dat_ddm_bl1_intc %>%
          z = z_intc + z_ppt) %>% 
   select(v, a, t, z)
 
+# run correlations
 dat_cor_bl1_intc <- cor(dat_cor_bl1_intc)
-corrplot(dat_cor_bl1_intc, method = "color", addCoef.col = 'white')
+
+# plot correlation matrix
+corrplot(dat_cor_bl1_intc,
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 1,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 1,  # Coefficient text size
+         title = "Parameter Correlations at Visit 1", # title
+         mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
-## ddm intc matrix - bl2
+## bl2
 ```{r}
+# filter data
 dat_cor_bl2_intc <- dat_ddm_bl2_intc %>% 
   mutate(v = v_intc + v_ppt,
          a = a_intc + a_ppt,
@@ -1200,8 +1369,18 @@ dat_cor_bl2_intc <- dat_ddm_bl2_intc %>%
          z = z_intc + z_ppt) %>% 
   select(v, a, t, z)
 
+# run correlations
 dat_cor_bl2_intc <- cor(dat_cor_bl2_intc)
-corrplot(dat_cor_bl2_intc, method = "color", addCoef.col = 'white')
+
+# plot correlation matrix
+corrplot(dat_cor_bl2_intc,
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 1,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 1,  # Coefficient text size
+         title = "Parameter Correlations at Visit 1", # title
+         mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
 # clinical sxs & ddm
@@ -1337,17 +1516,6 @@ IQR(dates$diff)
 
 # descriptives
 ```{r}
-#### d' descriptives ----------
-dTable <- dat_dprime_all %>% 
-  group_by(group, visit) %>%
-  summarise(
-    d_con_mean = round(mean(d_context, na.rm = TRUE),2),
-    d_con_sd = round(sd(d_context, na.rm = TRUE),2),
-    d_exp_mean = round(mean(d_expect, na.rm = TRUE),2),
-    d_exp_sd = round(sd(d_expect, na.rm = TRUE),2))
-dTable
-
-
 ### error descriptives ----------
 errTable <- dat_topx_all %>% 
   group_by(group, visit, cttype) %>%
@@ -1364,8 +1532,24 @@ rtTable <- dat_topx_all %>%
     rt_mdn_sd = round(sd(rt_mdn, na.rm = TRUE),0))
 rtTable
 
+#### d' descriptives ----------
+dTable <- dat_dprime_all %>% 
+  group_by(group, visit) %>%
+  summarise(
+    d_con_mean = round(mean(d_context, na.rm = TRUE),2),
+    d_con_sd = round(sd(d_context, na.rm = TRUE),2),
+    d_exp_mean = round(mean(d_expect, na.rm = TRUE),2),
+    d_exp_sd = round(sd(d_expect, na.rm = TRUE),2))
+dTable
 
 ## ddm descriptives ----------
+ddmTable <- dat_ddm_behav %>% 
+  group_by(group, visit, parameter, cttype) %>%
+  summarise(
+    param_mean = round(mean(mean, na.rm = TRUE),2),
+    param_sd = round(sd(mean, na.rm = TRUE),2))
+ddmTable
+
 ddmTable_bl1 <- dat_ddm_bl1 %>% 
   group_by(group, parameter, cttype) %>%
   summarise(
@@ -1379,6 +1563,5 @@ ddmTable_bl2 <- dat_ddm_bl2 %>%
     param_mean = round(mean(mean, na.rm = TRUE),2),
     param_sd = round(sd(mean, na.rm = TRUE),2))
 ddmTable_bl2
-
 ```
 
