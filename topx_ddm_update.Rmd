@@ -211,6 +211,37 @@ dat_dprime_bl2_long <- dat_dprime_all_long %>%
 
 ```
 
+
+
+## visualize density/distribution
+```{r}
+plot_dist_behav <- function(dat, var) {
+  plot <- ggplot(dat, aes(x = var, group = cttype, fill = cttype)) +
+  geom_density(adjust = 1.5, alpha = 0.4) +
+  facet_wrap(~ interaction(group, visit))
+  print(plot)
+}
+
+plot_dist_behav(dat_topx_behav, )
+plot_dist_behav(dat_topx_behav, )
+plot_dist_behav(dat_topx_behav, )
+plot_dist_behav(dat_topx_behav, )
+
+normality_test <- function(dat) {
+  results <- dat %>% 
+    group_by(group, visit, cttype) %>%
+    summarise(p_value = tryCatch(round(shapiro.test(mean)$p.value, 3), 
+                                 error = function(e) NA), .groups = "drop")
+  print(results)
+}
+
+normality_test(v_dat_all)
+normality_test(a_dat_all)
+normality_test(t_dat_all)
+normality_test(z_dat_all)
+
+```
+
 ## BL1 -----------------------
 ### error
 ```{r}
@@ -236,7 +267,8 @@ plot_err_bl1 <- ggplot(dat_topx_bl1,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_err_bl1
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_BL1.png"), plot_err_bl1, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_BL1.png"),
+#        plot_err_bl1, width = 6, height = 4)
 
 ### LMER error BL1
 mod_err_bl1 <- lmer(error ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl1)
@@ -283,7 +315,8 @@ plot_dprime_bl1 <- ggplot(dat_dprime_bl1_long,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_dprime_bl1
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL1.png"), plot_dprime_bl1, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL1.png"),
+#        plot_dprime_bl1, width = 6, height = 4)
 
 #### LMER d' BL1 -----
 mod_d_bl1 <- lmer(dprime ~ group * dprime_type + age + (1|subj_idx), data = dat_dprime_bl1_long)
@@ -323,7 +356,8 @@ plot_rt_bl1 <- ggplot(dat_topx_bl1,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_bl1
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_BL1.png"), plot_rt_bl1, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_BL1.png"),
+#        plot_rt_bl1, width = 6, height = 4)
 
 ### LMER RT BL1 
 mod_rt_bl1 <- lmer(rt_mdn ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl1)
@@ -362,7 +396,8 @@ plot_err_bl2 <- ggplot(dat_topx_bl2,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_err_bl2
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_BL2.png"), plot_err_bl2, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_BL2.png"),
+#        plot_err_bl2, width = 6, height = 4)
 
 ### LMER Error BL2
 mod_err_bl2 <- lmer(error ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl2)
@@ -409,7 +444,8 @@ plot_dprime_bl2 <- ggplot(dat_dprime_bl2_long,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_dprime_bl2
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL2.png"), plot_dprime_bl2, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL2.png"),
+#        plot_dprime_bl2, width = 6, height = 4)
 
 #### LMER d' BL2 -----
 mod_d_bl2 <- lmer(dprime ~ group * dprime_type + age + (1|subj_idx), data = dat_dprime_bl2_long)
@@ -449,7 +485,8 @@ plot_rt_bl2 <- ggplot(dat_topx_bl2,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_bl2
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_BL2.png"), plot_rt_bl2, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_BL2.png"),
+#        plot_rt_bl2, width = 6, height = 4)
 
 ### LMER RT BL2
 mod_rt_bl2 <- lmer(rt_mdn ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav_bl2)
@@ -493,10 +530,13 @@ plot_err_sep <- ggplot(dat_topx_all,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_err_sep
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.png"), plot_err_sep, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.png"),
+#        plot_err_sep, width = 6, height = 4)
 
 ### LMER error BL1+BL2 Sep (w/ visit) -----------
-mod_err_sep<- lmer(error ~ group * cttype * visit + age + (1|subj_idx), data = dat_topx_behav)
+mod_err_sep <- lmer(error ~ group * cttype * visit + age + (1|subj_idx), data = dat_topx_behav)
+
+
 anova(mod_err_sep, type = 3)
 print(summary(mod_err_sep))
 r.squaredGLMM(mod_err_sep)
@@ -551,7 +591,8 @@ plot_dprime_sep <- ggplot(dat_dprime_all_long,
         plot.title = element_text(face = "bold", size = 22))
 plot_dprime_sep
 
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Sep.png"), plot_dprime_sep, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Sep.png"),
+#        plot_dprime_sep, width = 6, height = 4)
 
 #### LMER d' BL1+BL2 sep (w/ visit)-----
 mod_d_sep <- lmer(dprime ~ group * dprime_type * visit + age + (1|subj_idx), data = dat_dprime_all_long)
@@ -597,7 +638,8 @@ plot_rt_sep <- ggplot(dat_topx_all,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_sep
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.png"), plot_rt_sep, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.png"),
+#        plot_rt_sep, width = 6, height = 4)
 
 ### LMER RT BL1+BL2 sep (w/ visit) -----------
 mod_rt_sep <- lmer(rt_mdn ~ group * cttype * visit + age + (1|subj_idx), data = dat_topx_behav)
@@ -639,7 +681,8 @@ plot_err_comb <- ggplot(dat_topx_all,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_err_comb
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Error_Comb.png"), plot_err_comb, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Comb.png"),
+#        plot_err_comb, width = 6, height = 4)
 
 ### LMER Error BL1+BL2 Combined (w/o visit)
 mod_err_comb <- lmer(error ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav)
@@ -686,7 +729,8 @@ plot_dprime_comb <- ggplot(dat_dprime_all_long,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_dprime_comb
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Comb.png"), plot_dprime_comb, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Comb.png"),
+#        plot_dprime_comb, width = 6, height = 4)
 
 #### LMER d' BL1+BL2 Combined (w/o visit)
 mod_d_comb <- lmer(dprime ~ group * dprime_type + age + (1|subj_idx), data = dat_dprime_all_long)
@@ -732,7 +776,8 @@ plot_rt_comb <- ggplot(dat_topx_all,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_comb
-# ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"), plot_rt_comb, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"), 
+#        plot_rt_comb, width = 6, height = 4)
 
 ### LMER RT BL1+BL2 Comb (w/o visit)
 mod_rt_comb <- lmer(rt_mdn ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav)
@@ -813,12 +858,21 @@ lmer_check <- function(model, title_lab) {
   print(car::vif(model))
   print(model_parameters(model))
   # check model and save plots
-  check_model(model)
-  png(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_ModelCheck_", title_lab, ".png"), 
-      width = 500, height = 500)
-  plot(check_model(model))
+  mod_check_plots <- check_model(model)
+  print(mod_check_plots)
+  png(paste0("graphs/model_check/", format(Sys.Date(), "%Y%m%d"),
+             "_ModelCheck_", title_lab, ".png"),
+      width = 500, height = 600)
+  plot(mod_check_plots)
   dev.off()
 }
+
+# extra code taht could be used for further testing:
+  # print(plot(model, resid(.) ~ fitted(.)))
+  # print(qqnorm(resid(model)))
+  # print(qqline(resid(model)))
+  # ggdensity(dat$mean)
+  # shapiro.test(dat$mean)
 
 # plot single dataset (BL1, BL2 or BL1-BL2 merged)
 plot_bl <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
@@ -844,7 +898,8 @@ plot_bl <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  #ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"), plot, width = 6, height = 4)
+  # ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
+  #        plot, width = 6, height = 4)
 }
 
 # plot multiple visits (BL1 and BL2)
@@ -876,145 +931,41 @@ plot_bl_sep <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  #ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"), plot, width = 6, height = 4)
+  # ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
+  #        plot, width = 6, height = 4)
 }
 ```
 
-## testing sandbox (v)
-BL1 only
+## visualize density/distribution
 ```{r}
-# # decision threshold - BL1 only ----------------------------------
-# 
-# # full model - A (with interaction)
-# mod_a_bl1_1 <- lmer(mean ~ group * cttype + (1|subj_idx), a_dat_bl1) 
-# anova(mod_a_bl1_1, type = 3)
-# summary(mod_a_bl1_1)
-# car::vif(mod_a_bl1_1) 
-# plot(mod_a_bl1_1, resid(.) ~ fitted(.))
-# qqnorm(resid(mod_a_bl1_1)); qqline(resid(mod_a_bl1_1))
-# check_model(mod_a_bl1_1)
-# 
-# # simplified model - A without interation
-# mod_a_bl1_2 <- lmer(mean ~ group + cttype + (1|subj_idx), a_dat_bl1) 
-# anova(mod_a_bl1_2, type = 3)
-# summary(mod_a_bl1_2)
-# car::vif(mod_a_bl1_2) 
-# plot(mod_a_bl1_2, resid(.) ~ fitted(.)) 
-# qqnorm(resid(mod_a_bl1_2)); qqline(resid(mod_a_bl1_2)) 
-# check_model(mod_a_bl1_2)
-# 
-# 
-# 
-# # drift rate - BL1 only ----------------------------------
-# 
-# # full model - V
-# # REML = 1123.8 (lower is better)
-# # age and gender aren't significant - remove them from model
-# # interaction group*cttype has a high VIF (22.7, >10 is high), indicates multicollinearity
-# mod_v_bl1_1 <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), v_dat_bl1) 
-# anova(mod_v_bl1_1, type = 3)
-# summary(mod_v_bl1_1)
-# car::vif(mod_v_bl1_1) # calculates variance-inflation and generalized VI factors 
-# # plots residuals to test for normality
-# plot(mod_v_bl1_1, resid(.) ~ fitted(.)) # should be randomly distributed along 0 y axis
-# qqnorm(resid(mod_v_bl1_1)); qqline(resid(mod_v_bl1_1)) # should follow qqline
-# 
-# # test drift rates for normality - none pass shapiro-wilk, all are non-normal
-# # AX
-# v_dat_bl1_ax <- filter(v_dat_bl1, cttype == "AX")
-# summary(v_dat_bl1_ax$mean)
-# ggdensity(v_dat_bl1_ax$mean)
-# shapiro.test(v_dat_bl1_ax$mean)
-# # AY
-# v_dat_bl1_ay <- filter(v_dat_bl1, cttype == "AY")
-# ggdensity(v_dat_bl1_ay$mean)
-# shapiro.test(v_dat_bl1_ay$mean)
-# # BX
-# v_dat_bl1_bx <- filter(v_dat_bl1, cttype == "BX")
-# ggdensity(v_dat_bl1_bx$mean)
-# shapiro.test(v_dat_bl1_bx$mean)
-# # BY
-# v_dat_bl1_by <- filter(v_dat_bl1, cttype == "BY")
-# ggdensity(v_dat_bl1_by$mean)
-# shapiro.test(v_dat_bl1_by$mean)
-# 
-# # posthocs for model 1
-# # emmeans(mod_v_bl1_1, list(pairwise ~ group), adjust = "mvt")
-# # emmeans(mod_v_bl1_1, list(pairwise ~ cttype), adjust = "mvt")
-# # emmeans(mod_v_bl1_1, list(pairwise ~ group|cttype), adjust = "mvt")
-# # emmeans(mod_v_bl1_1, list(pairwise ~ cttype|group), adjust = "mvt")
-# 
-# # simplified model - final version?
-# # REML = 1149.2
-# # singular fit: random effects structure is over-parameterized or there is little variability in random effect
-# mod_v_bl1 <- lmer(mean ~ group * cttype + (1|subj_idx), v_dat_bl1) 
-# # mod_v_bl1 <- lm(mean ~ group * cttype, v_dat_bl1) - would help with singular fit issue, but isn't fitting any better otherwise... don't use
-# anova(mod_v_bl1)
-# summary(mod_v_bl1)
-# car::vif(mod_v_bl1) # calculates variance-inflation and generalized VI factors 
-# # plots residuals to test for normality
-# plot(mod_v_bl1, resid(.) ~ fitted(.)) # should be randomly distributed along 0 y axis
-# qqnorm(resid(mod_v_bl1)); qqline(resid(mod_v_bl1_1)) # should follow qqline
-# model_parameters(mod_v_bl1)
-# check_model(mod_v_bl1)
-# 
-# # plot drift rate at BL1
-# plot_v_bl1 <- ggplot(v_dat_bl1, aes(x= cttype, y=mean, group = group)) + 
-#   stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) + 
-#   stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
-#   stat_summary(fun.data = mean_se, geom = "errorbar", 
-#                  aes(color = group), width = 0.1, 
-#                  size = 1) + 
-#     labs(title = "Drift Rates at Visit 1", y = "Drift Rates (v)", 
-#          x = "Trial Type", color = "Group") +
-#     coord_cartesian(ylim = c(.7, 3)) +
-#     scale_color_manual(values=c("#2C737F", "#AA8829"),
-#                        labels=c("Ctl", "EP")) + 
-#     theme(panel.grid.major = element_blank(), 
-#           panel.grid.minor = element_blank(),
-#           panel.background = element_blank(), 
-#           axis.line = element_line(colour = "black"), 
-#           axis.text = element_text(face="bold", size = 16),
-#           axis.title = element_text(face="bold", size = 20),
-#           legend.text = element_text(face="bold", size = 14),
-#           legend.title = element_text(face = "bold", size = 16),
-#           plot.title = element_text(face = "bold", size = 22))
-# plot_v_bl1
+plot_dist_mod <- function(dat) {
+  plot <- ggplot(dat, aes(x = mean, group = cttype, fill = cttype)) +
+  geom_density(adjust = 1.5, alpha = 0.4) +
+  facet_wrap(~ interaction(group, visit))
+  print(plot)
+}
+
+plot_dist_mod(v_dat_all)
+plot_dist_mod(a_dat_all)
+plot_dist_mod(t_dat_all)
+plot_dist_mod(z_dat_all)
+
+normality_test <- function(dat) {
+  results <- dat %>% 
+    group_by(group, visit, cttype) %>%
+    summarise(p_value = tryCatch(round(shapiro.test(mean)$p.value, 3), 
+                                 error = function(e) NA), .groups = "drop")
+  print(results)
+}
+
+normality_test(v_dat_all)
+normality_test(a_dat_all)
+normality_test(t_dat_all)
+normality_test(z_dat_all)
+
 ```
 
-testing sandbox (v)
-BL1 and BL2
-```{r}
-# # drift rate - combined BL1 and BL2 ----------------------------------
-# # full model (REML = 2211.4)
-# mod_v_comb1 <- lmer(mean ~ group * cttype + age + gender + (1|subj_idx), v_dat_all) 
-# anova(mod_v_comb1, type = 3)
-# summary(mod_v_comb1)
-# car::vif(mod_v_comb1) # calculates variance-inflation and generalized variance-inflation factors 
-# # plots residuals to test for normality
-# plot(mod_v_comb1, resid(.) ~ fitted(.)) # should be randomly distributed along 0 y axis
-# qqnorm(resid(mod_v_comb1)); qqline(resid(mod_v_comb1)) # should follow qqline
-# 
-# # remove age + gender (REML = 2279.8)
-# # simpler model, covariates were not significant before
-# # fixed effects more stable = estimates and standard errors appear more reasonable, without extreme values
-# # however, residual variance is still high, correlations among fixed effects is still high (GVIF < 10 = concern for collinearity)
-# mod_v_comb2 <- lmer(mean ~ group * cttype + (1|subj_idx), v_dat_all) 
-# anova(mod_v_comb2, type = 3)
-# summary(mod_v_comb2)
-# car::vif(mod_v_comb2)
-# plot(mod_v_comb2, resid(.) ~ fitted(.))
-# qqnorm(resid(mod_v_comb2)); qqline(resid(mod_v_comb2))
-# 
-# # remove interaction (REML = 2344.7)
-# # fixes multicollinearity problem
-# mod_v_comb3 <- lmer(mean ~ group + cttype + (1|subj_idx), v_dat_all) 
-# anova(mod_v_comb3, type = 3)
-# summary(mod_v_comb3)
-# car::vif(mod_v_comb3)
-# plot(mod_v_comb3, resid(.) ~ fitted(.))
-# qqnorm(resid(mod_v_comb3)); qqline(resid(mod_v_comb2))
-```
+
 
 ## BL1----------------------
 ### drift rate (v)
@@ -1309,20 +1260,38 @@ dat_ddm_bl2_intc <- filter(dat_ddm_bl2_intc, participant_id %in% common_ids)
 
 # Combine both datasets
 dat_ddm_comb_intc <- bind_rows(dat_ddm_bl1_intc, dat_ddm_bl2_intc)
+colnames(dat_ddm_comb_intc)[1] <- "subj_idx"
+
+# add vars for group+pt intercepts (not accounting for trial type)
+dat_ddm_bl1_intc <- dat_ddm_bl1_intc %>% 
+  mutate(v_sum = v_intc + v_ppt, .after = v_ppt) %>% 
+  mutate(a_sum = a_intc + a_ppt, .after = a_ppt) %>% 
+  mutate(t_sum = t_intc + t_ppt, .after = t_ppt) %>% 
+  mutate(z_sum = z_intc + z_ppt, .after = z_ppt)
+
+dat_ddm_bl2_intc <- dat_ddm_bl2_intc %>% 
+  mutate(v_sum = v_intc + v_ppt, .after = v_ppt) %>% 
+  mutate(a_sum = a_intc + a_ppt, .after = a_ppt) %>% 
+  mutate(t_sum = t_intc + t_ppt, .after = t_ppt) %>% 
+  mutate(z_sum = z_intc + z_ppt, .after = z_ppt)
+
+dat_ddm_comb_intc <- dat_ddm_comb_intc %>% 
+  mutate(v_sum = v_intc + v_ppt, .after = v_ppt) %>% 
+  mutate(a_sum = a_intc + a_ppt, .after = a_ppt) %>% 
+  mutate(t_sum = t_intc + t_ppt, .after = t_ppt) %>% 
+  mutate(z_sum = z_intc + z_ppt, .after = z_ppt)
 ```
 
-## comb
+## BL1+BL2 Comb
 ```{r}
-# filter data to intercepts only
+# filter data, create vars for group+pt intercepts (not accounting for trial type)
 dat_cor_comb_intc <- dat_ddm_comb_intc %>% 
-  mutate(v = v_intc + v_ppt,
-         a = a_intc + a_ppt,
-         t = t_intc + t_ppt,
-         z = z_intc + z_ppt) %>% 
-  select(v, a, t, z)
+  select(v_sum, a_sum, t_sum, z_sum)
 
 # run correlations
 dat_cor_comb_intc <- cor(dat_cor_comb_intc)
+colnames(dat_cor_comb_intc) <- c("v", "a", "t", "w")
+rownames(dat_cor_comb_intc) <- c("v", "a", "t", "w")
 
 # plot the correlation matrix
 corrplot(dat_cor_comb_intc, 
@@ -1331,22 +1300,20 @@ corrplot(dat_cor_comb_intc,
          tl.cex = 1,  # Axis label text size
          tl.col = "black", # Axis label text color
          number.cex = 1,  # Coefficient text size
-         title = "Parameter Correlations at Visit 1", # title
+         title = "Parameter Correlations (Visits 1+2 Combined)", # title
          mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
 ## bl1
 ```{r}
-# filter data
+# filter data, create vars for group+pt intercepts (not accounting for trial type)
 dat_cor_bl1_intc <- dat_ddm_bl1_intc %>% 
-  mutate(v = v_intc + v_ppt,
-         a = a_intc + a_ppt,
-         t = t_intc + t_ppt,
-         z = z_intc + z_ppt) %>% 
-  select(v, a, t, z)
+  select(v_sum, a_sum, t_sum, z_sum)
 
 # run correlations
 dat_cor_bl1_intc <- cor(dat_cor_bl1_intc)
+colnames(dat_cor_bl1_intc) <- c("v", "a", "t", "w")
+rownames(dat_cor_bl1_intc) <- c("v", "a", "t", "w")
 
 # plot correlation matrix
 corrplot(dat_cor_bl1_intc,
@@ -1361,16 +1328,14 @@ corrplot(dat_cor_bl1_intc,
 
 ## bl2
 ```{r}
-# filter data
+# filter data, create vars for group+pt intercepts (not accounting for trial type)
 dat_cor_bl2_intc <- dat_ddm_bl2_intc %>% 
-  mutate(v = v_intc + v_ppt,
-         a = a_intc + a_ppt,
-         t = t_intc + t_ppt,
-         z = z_intc + z_ppt) %>% 
-  select(v, a, t, z)
+  select(v_sum, a_sum, t_sum, z_sum)
 
 # run correlations
 dat_cor_bl2_intc <- cor(dat_cor_bl2_intc)
+colnames(dat_cor_bl2_intc) <- c("v", "a", "t", "w")
+rownames(dat_cor_bl2_intc) <- c("v", "a", "t", "w")
 
 # plot correlation matrix
 corrplot(dat_cor_bl2_intc,
@@ -1379,114 +1344,221 @@ corrplot(dat_cor_bl2_intc,
          tl.cex = 1,  # Axis label text size
          tl.col = "black", # Axis label text color
          number.cex = 1,  # Coefficient text size
-         title = "Parameter Correlations at Visit 1", # title
+         title = "Parameter Correlations at Visit 2", # title
          mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
-# clinical sxs & ddm
+# v-BPRS correlations BL1+BL2 Comb
+```{r}
+# filter data to include drift rate only
+v_dat_all_pt = filter(dat_ddm_behav, parameter == 'v' & group == "Patient")
+
+# Run correlations between "mean" and multiple bprs variables, grouped by "cttype"
+cor_table_v <- v_dat_all_pt %>%
+  group_by(cttype) %>%
+  summarise(
+    cor_bprs_pos= cor(mean, bprs_pos_ws, use = "complete.obs"), # exclude NAs
+    cor_bprs_neg= cor(mean, bprs_neg_ws, use = "complete.obs"),
+    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs"),
+    .groups = "drop")
+print(cor_table_v)
+
+cor_matrix_v <- as.matrix(cor_table_v[, -1])
+colnames(cor_matrix_v) <- c("Positive", "Negative", "Disorganized")
+rownames(cor_matrix_v) <- c("v-AX", "v-AY", "v-BX", "v-BY")
+
+# plot correlation matrix
+corrplot(cor_matrix_v,
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 1,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 1,  # Coefficient text size
+         title = "Correlations of Drift Rate and BPRS", # title
+         mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
+
+
+# Compute correlation coefficients and p-values within summarise()
+cor_table_v2 <- v_dat_all_pt %>%
+  group_by(cttype) %>%
+  summarise(
+    cor_bprs_pos = cor(mean, bprs_pos_ws, use = "complete.obs"),
+    p_bprs_pos = cor.test(mean, bprs_pos_ws)$p.value,  # Extract p-value
+    
+    cor_bprs_neg = cor(mean, bprs_neg_ws, use = "complete.obs"),
+    p_bprs_neg = cor.test(mean, bprs_neg_ws)$p.value,
+    
+    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs"),
+    p_bprs_disorg = cor.test(mean, bprs_disorg_ws)$p.value,
+    
+    .groups = "drop"
+  )
+
+# Print results
+print(cor_table_v2)
+
+```
+
+# DDM-BPRS Correlations at BL1+BL2 Comb
+```{r}
+# merge intercepts with behav data
+dat_ddm_comb_intc <- merge(dat_ddm_comb_intc, dat_behav, by = "subj_idx", all.x = TRUE)
+dat_ddm_comb_intc_pt <- dat_ddm_comb_intc %>% 
+  filter(group == "Patient")
+
+# filter data to only include intercepts and bprs
+dat_cor_comb_pt <- dat_ddm_comb_intc_pt %>% 
+  select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws)
+
+# run correlations
+sum(is.na(dat_cor_comb_pt))
+
+dat_cor_comb_pt <- cor(dat_cor_comb_pt, use="pairwise.complete.obs")
+colnames(dat_cor_comb_pt) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
+rownames(dat_cor_comb_pt) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
+
+# plot correlation matrix
+corrplot(dat_cor_comb_pt,
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 1,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 1,  # Coefficient text size
+         title = "Correlations of Parameters and BPRS", # title
+         mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
+
+
+# get p-vals
+# Create an empty matrix for p-values
+n <- ncol(dat_cor_comb_pt)
+p_values <- matrix(NA, n, n)
+colnames(p_values) <- colnames(dat_cor_comb_pt)
+rownames(p_values) <- rownames(dat_cor_comb_pt)
+
+# Compute correlation coefficients and p-values
+for (i in 1:(n - 1)) {
+  for (j in (i + 1):n) {
+    test <- cor.test(dat_cor_comb_pt[, i], dat_cor_comb_pt[, j])  # Perform cor.test
+    p_values[i, j] <- test$p.value
+    p_values[j, i] <- test$p.value  # Fill the symmetric matrix
+  }
+}
+
+# Print p-value matrix
+print(p_values)
+```
+
+
 ```{r}
 # write function for correlations
 cor_sxs <- function(dat, var) {
   cor.test(dat$mean, dat[[var]], method = "spearman")
 }
 
-# filter data to include drift rate only
-v_dat_all_pt = filter(dat_ddm_behav, parameter == 'v' & group == "Patient")
-
-# create subsets for v-AX
+# # create subsets for v-AX
 v_dat_all_pt_AX <- filter(v_dat_all_pt, cttype == "AX")
-v_dat_BL1_pt_AX <- filter(v_dat_all_pt, cttype == "AX" & visit == "BL1")
-v_dat_BL2_pt_AX <- filter(v_dat_all_pt, cttype == "AX" & visit == "BL2")
-
-# create subsets for v-BX
+# v_dat_BL1_pt_AX <- filter(v_dat_all_pt, cttype == "AX" & visit == "BL1")
+# v_dat_BL2_pt_AX <- filter(v_dat_all_pt, cttype == "AX" & visit == "BL2")
+# 
+# # create subsets for v-AY
+v_dat_all_pt_AY <- filter(v_dat_all_pt, cttype == "AY")
+# v_dat_BL1_pt_AY <- filter(v_dat_all_pt, cttype == "AY" & visit == "BL1")
+# v_dat_BL2_pt_AY <- filter(v_dat_all_pt, cttype == "AY" & visit == "BL2")
+# 
+# # create subsets for v-BX
 v_dat_all_pt_BX <- filter(v_dat_all_pt, cttype == "BX")
-v_dat_BL1_pt_BX <- filter(v_dat_all_pt, cttype == "BX" & visit == "BL1")
-v_dat_BL2_pt_BX <- filter(v_dat_all_pt, cttype == "BX" & visit == "BL2")
-
-# create subsets for v-BY
+# v_dat_BL1_pt_BX <- filter(v_dat_all_pt, cttype == "BX" & visit == "BL1")
+# v_dat_BL2_pt_BX <- filter(v_dat_all_pt, cttype == "BX" & visit == "BL2")
+# 
+# # create subsets for v-BY
 v_dat_all_pt_BY <- filter(v_dat_all_pt, cttype == "BY")
-v_dat_BL1_pt_BY <- filter(v_dat_all_pt, cttype == "BY" & visit == "BL1")
-v_dat_BL2_pt_BY <- filter(v_dat_all_pt, cttype == "BY" & visit == "BL2")
+# v_dat_BL1_pt_BY <- filter(v_dat_all_pt, cttype == "BY" & visit == "BL1")
+# v_dat_BL2_pt_BY <- filter(v_dat_all_pt, cttype == "BY" & visit == "BL2")
 ```
 
 ```{r}
 # v-AX - BPRS
-cor_sxs(v_dat_all_pt_AX, "bprs_pos_ws")
+# cor_sxs(v_dat_all_pt_AX, "bprs_pos_ws")
 cor_sxs(v_dat_all_pt_AX, "bprs_neg_ws")
-cor_sxs(v_dat_all_pt_AX, "bprs_disorg_ws")
-cor_sxs(v_dat_all_pt_AX, "bprs_dep_anx_ws")
-cor_sxs(v_dat_all_pt_AX, "bprs_mania_ws")
-# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
-cor_sxs(v_dat_BL1_pt_AX, "bprs_neg_ws")
-cor_sxs(v_dat_BL2_pt_AX, "bprs_neg_ws")
+# cor_sxs(v_dat_all_pt_AX, "bprs_disorg_ws")
+# cor_sxs(v_dat_all_pt_AX, "bprs_dep_anx_ws")
+# cor_sxs(v_dat_all_pt_AX, "bprs_mania_ws")
+# # BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+# cor_sxs(v_dat_BL1_pt_AX, "bprs_neg_ws")
+# cor_sxs(v_dat_BL2_pt_AX, "bprs_neg_ws")
+# 
 
-# v-BX - BPRS
-cor_sxs(v_dat_all_pt_BX, "bprs_pos_ws")
+# v-AY - BPRS
+cor_sxs(v_dat_all_pt_AY, "bprs_neg_ws")
+
+# # v-BX - BPRS
+# cor_sxs(v_dat_all_pt_BX, "bprs_pos_ws")
 cor_sxs(v_dat_all_pt_BX, "bprs_neg_ws")
-cor_sxs(v_dat_all_pt_BX, "bprs_disorg_ws")
-cor_sxs(v_dat_all_pt_BX, "bprs_dep_anx_ws")
-cor_sxs(v_dat_all_pt_BX, "bprs_mania_ws")
-# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
-cor_sxs(v_dat_BL1_pt_BX, "bprs_neg_ws")
-cor_sxs(v_dat_BL2_pt_BX, "bprs_neg_ws")
-
-# v-BY - BPRS
-cor_sxs(v_dat_all_pt_BY, "bprs_pos_ws")
+# cor_sxs(v_dat_all_pt_BX, "bprs_disorg_ws")
+# cor_sxs(v_dat_all_pt_BX, "bprs_dep_anx_ws")
+# cor_sxs(v_dat_all_pt_BX, "bprs_mania_ws")
+# # BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+# cor_sxs(v_dat_BL1_pt_BX, "bprs_neg_ws")
+# cor_sxs(v_dat_BL2_pt_BX, "bprs_neg_ws")
+# 
+# # v-BY - BPRS
+# cor_sxs(v_dat_all_pt_BY, "bprs_pos_ws")
 cor_sxs(v_dat_all_pt_BY, "bprs_neg_ws")
-cor_sxs(v_dat_all_pt_BY, "bprs_disorg_ws")
-cor_sxs(v_dat_all_pt_BY, "bprs_dep_anx_ws")
-cor_sxs(v_dat_all_pt_BY, "bprs_mania_ws")
-# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
-cor_sxs(v_dat_BL1_pt_BY, "bprs_neg_ws")
-cor_sxs(v_dat_BL2_pt_BY, "bprs_neg_ws")
+# cor_sxs(v_dat_all_pt_BY, "bprs_disorg_ws")
+# cor_sxs(v_dat_all_pt_BY, "bprs_dep_anx_ws")
+# cor_sxs(v_dat_all_pt_BY, "bprs_mania_ws")
+# # BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+# cor_sxs(v_dat_BL1_pt_BY, "bprs_neg_ws")
+# cor_sxs(v_dat_BL2_pt_BY, "bprs_neg_ws")
 ```
 
 ```{r}
-# v-AX - SANS-SAPS
-cor_sxs(v_dat_all_pt_AX, "sanssaps_pos_tib2")
-cor_sxs(v_dat_all_pt_AX, "sanssaps_neg_tib2")
-cor_sxs(v_dat_all_pt_AX, "sanssaps_disorg_tib2")
-# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
-cor_sxs(v_dat_BL1_pt_AX, "sanssaps_neg_tib2")
-cor_sxs(v_dat_BL2_pt_AX, "sanssaps_neg_tib2")
-
-# v-BX - SANS-SAPS
-cor_sxs(v_dat_all_pt_BX, "sanssaps_pos_tib2")
-cor_sxs(v_dat_all_pt_BX, "sanssaps_neg_tib2")
-cor_sxs(v_dat_all_pt_BX, "sanssaps_disorg_tib2")
-# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
-cor_sxs(v_dat_BL1_pt_BX, "sanssaps_neg_tib2")
-cor_sxs(v_dat_BL2_pt_BX, "sanssaps_neg_tib2")
-
-# # v-BY - SANS-SAPS
-cor_sxs(v_dat_all_pt_BY, "sanssaps_pos_tib2")
-cor_sxs(v_dat_all_pt_BY, "sanssaps_neg_tib2")
-cor_sxs(v_dat_all_pt_BY, "sanssaps_disorg_tib2")
-# BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
-cor_sxs(v_dat_BL1_pt_BY, "sanssaps_neg_tib2")
-cor_sxs(v_dat_BL2_pt_BY, "sanssaps_neg_tib2")
-
-
-plot_vbx_neg <- ggplot(v_dat_BL1_pt_BX, aes(x = bprs_neg_ws, y = mean, color = group)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, color = "black") +
-  scale_color_manual(values=c("#AA8829"),
-                       labels=c("EP")) + 
-  labs( title = "",
-    x = "BPRS Negative Symptoms",
-    y = "BX Drift Rates (v-BX)") +
-      theme(panel.grid.major = element_blank(), 
-          panel.grid.minor = element_blank(),
-          panel.background = element_blank(), 
-          axis.line = element_line(colour = "black"), 
-          axis.text = element_text(face="bold", size = 14),
-          axis.title = element_text(face="bold", size = 16),
-          legend.text = element_text(face="bold", size = 14),
-          legend.title = element_text(face = "bold", size = 16),
-          plot.title = element_text(face = "bold", size = 22))
-plot_vbx_neg
-
-#ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_vBX_BPRSneg.png"), plot_vbx_neg, width = 6, height = 4)
+# # v-AX - SANS-SAPS
+# cor_sxs(v_dat_all_pt_AX, "sanssaps_pos_tib2")
+# cor_sxs(v_dat_all_pt_AX, "sanssaps_neg_tib2")
+# cor_sxs(v_dat_all_pt_AX, "sanssaps_disorg_tib2")
+# # BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+# cor_sxs(v_dat_BL1_pt_AX, "sanssaps_neg_tib2")
+# cor_sxs(v_dat_BL2_pt_AX, "sanssaps_neg_tib2")
+# 
+# # v-BX - SANS-SAPS
+# cor_sxs(v_dat_all_pt_BX, "sanssaps_pos_tib2")
+# cor_sxs(v_dat_all_pt_BX, "sanssaps_neg_tib2")
+# cor_sxs(v_dat_all_pt_BX, "sanssaps_disorg_tib2")
+# # BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+# cor_sxs(v_dat_BL1_pt_BX, "sanssaps_neg_tib2")
+# cor_sxs(v_dat_BL2_pt_BX, "sanssaps_neg_tib2")
+# 
+# # # v-BY - SANS-SAPS
+# cor_sxs(v_dat_all_pt_BY, "sanssaps_pos_tib2")
+# cor_sxs(v_dat_all_pt_BY, "sanssaps_neg_tib2")
+# cor_sxs(v_dat_all_pt_BY, "sanssaps_disorg_tib2")
+# # BL1 and BL2 - but keep in mind, comparing 1 BPRS to 2 DDM
+# cor_sxs(v_dat_BL1_pt_BY, "sanssaps_neg_tib2")
+# cor_sxs(v_dat_BL2_pt_BY, "sanssaps_neg_tib2")
+# 
+# 
+# plot_vbx_neg <- ggplot(v_dat_BL1_pt_BX, aes(x = bprs_neg_ws, y = mean, color = group)) +
+#   geom_point() +
+#   geom_smooth(method = "lm", se = FALSE, color = "black") +
+#   scale_color_manual(values=c("#AA8829"),
+#                        labels=c("EP")) + 
+#   labs( title = "",
+#     x = "BPRS Negative Symptoms",
+#     y = "BX Drift Rates (v-BX)") +
+#       theme(panel.grid.major = element_blank(), 
+#           panel.grid.minor = element_blank(),
+#           panel.background = element_blank(), 
+#           axis.line = element_line(colour = "black"), 
+#           axis.text = element_text(face="bold", size = 14),
+#           axis.title = element_text(face="bold", size = 16),
+#           legend.text = element_text(face="bold", size = 14),
+#           legend.title = element_text(face = "bold", size = 16),
+#           plot.title = element_text(face = "bold", size = 22))
+# plot_vbx_neg
+# 
+# ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_vBX_BPRSneg.png"),
+#        plot_vbx_neg, width = 6, height = 4)
 
 ```
 
