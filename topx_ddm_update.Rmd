@@ -802,11 +802,87 @@ check_model(mod_rt_comb)
 # median(dat_topx_behav$age)
 
 dat_topx_behav %>%
+  group_by(age_split, cttype, visit) %>%
+  summarize(mean_rt_mdn = mean(rt_mdn, na.rm = TRUE), 
+            sd_mdn = sd(rt_mdn, na.rm = TRUE))
+
+# repeated measures
+t.test(rt_mdn ~ age_split, data = dat_topx_behav)
+cor.test(dat_topx_behav$age, dat_topx_behav$rt_mdn)
+
+# collapse 8 RTs to one RT
+age_rt_summary <- dat_topx_behav %>%
+  group_by(subj_idx, age_split) %>%  # include age_split in the group
+  summarise(mean_rt_mdn = mean(rt_mdn, na.rm = TRUE), .groups = "drop")
+t.test(mean_rt_mdn ~ age_split, data = age_rt_summary)
+
+age_rt_summary_visit <- dat_topx_behav %>%
+  group_by(subj_idx, age_split, visit) %>%  # include age_split in the group
+  summarise(mean_rt_mdn = mean(rt_mdn, na.rm = TRUE), .groups = "drop")
+
+# test avg RT at BL1
+age_rt_summary_bl1 <- age_rt_summary_visit %>% 
+  filter(visit == "BL1")
+t.test(mean_rt_mdn ~ age_split, data = age_rt_summary_bl1)
+
+# test avg RT at BL2
+age_rt_summary_bl2 <- age_rt_summary_visit %>% 
+  filter(visit == "BL2")
+t.test(mean_rt_mdn ~ age_split, data = age_rt_summary_bl2)
+
+age_rt_summary %>%
   group_by(age_split) %>%
-  summarize(mean_rt_mdn = mean(rt_mdn, na.rm = TRUE))
+  summarize(mean_rt_mdn = mean(mean_rt_mdn, na.rm = TRUE))
 
-t.test(dat_topx_behav$age_split, dat_topx_behav$rt_mdn, na.rm = TRUE)
+# test AX at BL1 - reporting this in paper's main text
+dat_topx_behav_bl1_AX <- dat_topx_behav %>% 
+  filter(visit == "BL1" & cttype == "AX")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl1_AX)
+cor.test(dat_topx_behav_bl1_AX$age, dat_topx_behav_bl1_AX$rt_mdn)
 
+# test AX at BL2 - reporting this in supplement
+dat_topx_behav_bl2_AX <- dat_topx_behav %>% 
+  filter(visit == "BL2" & cttype == "AX")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl2_AX)
+cor.test(dat_topx_behav_bl2_AX$age, dat_topx_behav_bl2_AX$rt_mdn)
+
+# test AY at BL1
+dat_topx_behav_bl1_AY <- dat_topx_behav %>% 
+  filter(visit == "BL1" & cttype == "AY")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl1_AY)
+cor.test(dat_topx_behav_bl1_AY$age, dat_topx_behav_bl1_AY$rt_mdn)
+
+# test AY at BL2
+dat_topx_behav_bl2_AY <- dat_topx_behav %>% 
+  filter(visit == "BL2" & cttype == "AY")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl2_AY)
+cor.test(dat_topx_behav_bl2_AY$age, dat_topx_behav_bl2_AY$rt_mdn)
+
+# test BX at BL1
+dat_topx_behav_bl1_BX <- dat_topx_behav %>% 
+  filter(visit == "BL1" & cttype == "BX")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl1_BX)
+cor.test(dat_topx_behav_bl1_BX$age, dat_topx_behav_bl1_BX$rt_mdn)
+
+# test BX at BL2
+dat_topx_behav_bl2_BX <- dat_topx_behav %>% 
+  filter(visit == "BL2" & cttype == "BX")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl2_BX)
+cor.test(dat_topx_behav_bl2_BX$age, dat_topx_behav_bl2_BX$rt_mdn)
+
+# test BY at BL1
+dat_topx_behav_bl1_BY <- dat_topx_behav %>% 
+  filter(visit == "BL1" & cttype == "BY")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl1_BY)
+cor.test(dat_topx_behav_bl1_BY$age, dat_topx_behav_bl1_BY$rt_mdn)
+
+# test BY at BL2
+dat_topx_behav_bl2_BY <- dat_topx_behav %>% 
+  filter(visit == "BL2" & cttype == "BY")
+t.test(rt_mdn ~ age_split, data = dat_topx_behav_bl2_BY)
+cor.test(dat_topx_behav_bl2_BY$age, dat_topx_behav_bl2_BY$rt_mdn)
+
+# run as LMER
 mod_rtAge <- lmer(rt_mdn ~ age_split * cttype * visit + (1|subj_idx), data = dat_topx_behav)
 anova(mod_rtAge)
 ```
@@ -1106,10 +1182,60 @@ lmer_check(mod_z_sep, "z_sep")
 #   group_by(age_split) %>%
 #   summarize(mean = mean(mean, na.rm = TRUE))
 
-t.test(a_dat_all$age_split, a_dat_all$mean, na.rm = TRUE)
+# t.test(a_dat_all$age_split, a_dat_all$mean, na.rm = TRUE)
+
+t.test(mean ~ age_split, data = a_dat_all)
 
 mod_a_Age <- lmer(mean ~ age_split * cttype * visit + (1|subj_idx), data = a_dat_all)
 anova(mod_a_Age)
+
+# test AX at BL1 - reporting this in paper's main text
+a_dat_bl1_AX <- a_dat_bl1 %>% 
+  filter(cttype == "AX")
+t.test(mean ~ age_split, data = a_dat_bl1_AX)
+cor.test(a_dat_bl1_AX$age, a_dat_bl1_AX$mean)
+
+# test AX at BL2 - reporting this in supplement
+a_dat_bl2_AX <- a_dat_bl2 %>% 
+  filter(cttype == "AX")
+t.test(mean ~ age_split, data = a_dat_bl2_AX)
+cor.test(a_dat_bl2_AX$age, a_dat_bl2_AX$mean)
+
+# test AY at BL1 - reporting this in paper's main text
+a_dat_bl1_AY <- a_dat_bl1 %>% 
+  filter(cttype == "AY")
+t.test(mean ~ age_split, data = a_dat_bl1_AY)
+cor.test(a_dat_bl1_AY$age, a_dat_bl1_AY$mean)
+
+# test AY at BL2 - reporting this in supplement
+a_dat_bl2_AY <- a_dat_bl2 %>% 
+  filter(cttype == "AY")
+t.test(mean ~ age_split, data = a_dat_bl2_AY)
+cor.test(a_dat_bl2_AY$age, a_dat_bl2_AY$mean)
+
+# test BX at BL1 - reporting this in paper's main text
+a_dat_bl1_BX <- a_dat_bl1 %>% 
+  filter(cttype == "BX")
+t.test(mean ~ age_split, data = a_dat_bl1_BX)
+cor.test(a_dat_bl1_BX$age, a_dat_bl1_BX$mean)
+
+# test BX at BL2 - reporting this in supplement
+a_dat_bl2_BX <- a_dat_bl2 %>% 
+  filter(cttype == "BX")
+t.test(mean ~ age_split, data = a_dat_bl2_BX)
+cor.test(a_dat_bl2_BX$age, a_dat_bl2_BX$mean)
+
+# test BY at BL1 - reporting this in paper's main text
+a_dat_bl1_BY <- a_dat_bl1 %>% 
+  filter(cttype == "BY")
+t.test(mean ~ age_split, data = a_dat_bl1_BY)
+cor.test(a_dat_bl1_BY$age, a_dat_bl1_BY$mean)
+
+# test BY at BL2 - reporting this in supplement
+a_dat_bl2_BY <- a_dat_bl2 %>% 
+  filter(cttype == "BY")
+t.test(mean ~ age_split, data = a_dat_bl2_BY)
+cor.test(a_dat_bl2_BY$age, a_dat_bl2_BY$mean)
 
 # ggplot(a_dat_all, aes(x = age_split, y = mean)) +
 #   geom_bar(stat = "identity") +
@@ -1120,15 +1246,68 @@ anova(mod_a_Age)
 ### investigate age (t)
 ```{r}
 # investigate age
-t_dat_all <- t_dat_all %>%
-  mutate(age_split = ifelse(age >= median(age, , na.rm = TRUE), 1, 0)) %>% 
-  mutate(age_split = as.numeric(age_split))
+# t_dat_all <- t_dat_all %>%
+#   mutate(age_split = ifelse(age >= median(age, , na.rm = TRUE), 1, 0)) %>% 
+#   mutate(age_split = as.numeric(age_split))
 
-t.test(t_dat_all$age_split, t_dat_all$mean, na.rm = TRUE)
+# t.test(t_dat_all$age_split, t_dat_all$mean, na.rm = TRUE)
 
 # ggplot(t_dat_all, aes(x = age_split, y = mean)) +
 #   geom_bar(stat = "identity") +
 #   labs(x = "Age", y = "Non-decision time", title = "1 = older, 0 = younger")
+
+t.test(mean ~ age_split, data = t_dat_all)
+
+mod_t_Age <- lmer(mean ~ age_split * cttype * visit + (1|subj_idx), data = t_dat_all)
+anova(mod_t_Age)
+
+# test AX at BL1 - reporting this in paper's main text
+t_dat_bl1_AX <- t_dat_bl1 %>% 
+  filter(cttype == "AX")
+t.test(mean ~ age_split, data = t_dat_bl1_AX)
+cor.test(t_dat_bl1_AX$age, t_dat_bl1_AX$mean)
+
+# test AX at BL2 - reporting this in supplement
+t_dat_bl2_AX <- t_dat_bl2 %>% 
+  filter(cttype == "AX")
+t.test(mean ~ age_split, data = t_dat_bl2_AX)
+cor.test(t_dat_bl2_AX$age, t_dat_bl2_AX$mean)
+
+# test AY at BL1 - reporting this in paper's main text
+t_dat_bl1_AY <- t_dat_bl1 %>% 
+  filter(cttype == "AY")
+t.test(mean ~ age_split, data = t_dat_bl1_AY)
+cor.test(t_dat_bl1_AY$age, t_dat_bl1_AY$mean)
+
+# test AY at BL2 - reporting this in supplement
+t_dat_bl2_AY <- t_dat_bl2 %>% 
+  filter(cttype == "AY")
+t.test(mean ~ age_split, data = t_dat_bl2_AY)
+cor.test(t_dat_bl2_AY$age, t_dat_bl2_AY$mean)
+
+# test BX at BL1 - reporting this in paper's main text
+t_dat_bl1_BX <- t_dat_bl1 %>% 
+  filter(cttype == "BX")
+t.test(mean ~ age_split, data = t_dat_bl1_BX)
+cor.test(t_dat_bl1_BX$age, t_dat_bl1_BX$mean)
+
+# test BX at BL2 - reporting this in supplement
+t_dat_bl2_BX <- t_dat_bl2 %>% 
+  filter(cttype == "BX")
+t.test(mean ~ age_split, data = t_dat_bl2_BX)
+cor.test(t_dat_bl2_BX$age, t_dat_bl2_BX$mean)
+
+# test BY at BL1 - reporting this in paper's main text
+t_dat_bl1_BY <- t_dat_bl1 %>% 
+  filter(cttype == "BY")
+t.test(mean ~ age_split, data = t_dat_bl1_BY)
+cor.test(t_dat_bl1_BY$age, t_dat_bl1_BY$mean)
+
+# test BY at BL2 - reporting this in supplement
+t_dat_bl2_BY <- t_dat_bl2 %>% 
+  filter(cttype == "BY")
+t.test(mean ~ age_split, data = t_dat_bl2_BY)
+cor.test(t_dat_bl2_BY$age, t_dat_bl2_BY$mean)
 ```
 
 # correlations - 14 vars
@@ -1348,8 +1527,9 @@ corrplot(dat_cor_bl2_intc,
          mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
-# v-BPRS correlations BL1+BL2 Comb
+# v-BPRS correlations BL1+BL2 Comb - pearson
 ```{r}
+# pearson
 # filter data to include drift rate only
 v_dat_all_pt = filter(dat_ddm_behav, parameter == 'v' & group == "Patient")
 
@@ -1399,7 +1579,96 @@ print(cor_table_v2)
 
 ```
 
-# DDM-BPRS Correlations at BL1+BL2 Comb
+# v-BPRS correlations BL1+BL2 Comb - spearman
+```{r}
+# Run Spearman correlations between "mean" and multiple BPRS variables, grouped by "cttype"
+cor_table_v3 <- v_dat_all_pt %>%
+  group_by(cttype) %>%
+  summarise(
+    cor_bprs_pos = cor(mean, bprs_pos_ws, use = "complete.obs", method = "spearman"),
+    cor_bprs_neg = cor(mean, bprs_neg_ws, use = "complete.obs", method = "spearman"),
+    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs", method = "spearman"),
+    .groups = "drop"
+  )
+print(cor_table_v3)
+
+cor_matrix_v3 <- as.matrix(cor_table_v3[, -1])
+colnames(cor_matrix_v3) <- c("Positive", "Negative", "Disorganized")
+rownames(cor_matrix_v3) <- c("v-AX", "v-AY", "v-BX", "v-BY")
+
+# plot correlation matrix
+corrplot(cor_matrix_v3,
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 1,
+         tl.col = "black",
+         number.cex = 1,
+         title = "Spearman Correlations of Drift Rate and BPRS",
+         mar = c(1, 1, 2, 1))
+
+# Compute correlation coefficients and p-values using Spearman method
+cor_table_v4 <- v_dat_all_pt %>%
+  group_by(cttype) %>%
+  summarise(
+    cor_bprs_pos = cor(mean, bprs_pos_ws, use = "complete.obs", method = "spearman"),
+    p_bprs_pos = cor.test(mean, bprs_pos_ws, method = "spearman")$p.value,
+    
+    cor_bprs_neg = cor(mean, bprs_neg_ws, use = "complete.obs", method = "spearman"),
+    p_bprs_neg = cor.test(mean, bprs_neg_ws, method = "spearman")$p.value,
+    
+    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs", method = "spearman"),
+    p_bprs_disorg = cor.test(mean, bprs_disorg_ws, method = "spearman")$p.value,
+    
+    .groups = "drop"
+  )
+print(cor_table_v4)
+
+plot_drift_neg <- ggplot(v_dat_all_pt, aes(x=mean, y=bprs_negative, 
+                         color = cttype, shape = cttype)) +
+  geom_point() + 
+  geom_smooth(method=lm, se = FALSE) + 
+  scale_color_manual(values=c('#A280BD', '#3E8643', 
+                              '#AA8829', '#2C737F')) +
+  scale_shape_manual(values=c(15, 17, 18, 19)) + 
+  labs(color = "Trial Type", shape = "Trial Type",
+       x="Drift Rate", y = "Negative Symptoms") +
+  theme_classic()
+print(plot_drift_neg)
+ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", "Drift_Rate_Neg_Sxs", ".png"), plot_drift_neg, width = 5, height = 3)
+
+# plot BL1 AY only
+v_dat_all_pt_bl1_AY <- v_dat_all_pt %>% filter(cttype == "AY" & visit == "BL1")
+ggplot(v_dat_all_pt_bl1_AY, aes(x=mean, y=bprs_negative)) + geom_point() + geom_smooth(method=lm)
+
+
+
+# Create plot with stars
+# create correlation and p-value matrices
+# cor_matrix_v4 <- as.matrix(cor_table_v4[, c("cor_bprs_pos", "cor_bprs_neg", "cor_bprs_disorg")])
+# p_matrix_v4 <- as.matrix(cor_table_v4[, c("p_bprs_pos", "p_bprs_neg", "p_bprs_disorg")])
+# # Set proper row and column names
+# rownames(cor_matrix_v4) <- cor_table_v4$cttype
+# rownames(p_matrix_v4) <- cor_table_v4$cttype
+# colnames(cor_matrix_v4) <- c("Positive", "Negative", "Disorganized")
+# colnames(p_matrix_v4) <- c("Positive", "Negative", "Disorganized")
+# 
+# corrplot(cor_matrix_v,
+#          method = "color",
+#          p.mat = p_matrix_v4,
+#          sig.level = c(0.001, 0.01, 0.05),  # thresholds for stars
+#          insig = "label_sig",
+#          pch.cex = 1.2,
+#          pch.col = "black",
+#          addCoef.col = "grey45",
+#          tl.col = "black",
+#          tl.cex = 1,
+#          number.cex = 1,
+#          title = "Spearman Correlations with Significance Stars",
+#          mar = c(1, 1, 2, 1))
+
+```
+
+# DDM-BPRS Correlations at BL1+BL2 Comb - pearson
 ```{r}
 # merge intercepts with behav data
 dat_ddm_comb_intc <- merge(dat_ddm_comb_intc, dat_behav, by = "subj_idx", all.x = TRUE)
@@ -1446,6 +1715,86 @@ for (i in 1:(n - 1)) {
 
 # Print p-value matrix
 print(p_values)
+```
+
+# DDM-BPRS Correlations at BL1+BL2 Comb - spearman
+```{r, warning=FALSE}
+# filter data to only include intercepts and BPRS variables
+dat_cor_comb_pt_v2 <- dat_ddm_comb_intc_pt %>% 
+  select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws)
+
+# Remove rows with all NA
+dat_cor_comb_pt_v2 <- dat_cor_comb_pt_v2[rowSums(is.na(dat_cor_comb_pt_v2)) < ncol(dat_cor_comb_pt_v2), ]
+
+# Compute Spearman correlation matrix
+cor_matrix_v5 <- cor(dat_cor_comb_pt_v2, use = "pairwise.complete.obs", method = "spearman")
+
+# Rename for plotting
+colnames(cor_matrix_v5) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
+rownames(cor_matrix_v5) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
+# 
+# # Create p-value matrix for Spearman
+# n <- ncol(dat_cor_comb_pt)
+# p_values <- matrix(NA, n, n)
+# colnames(p_values) <- colnames(cor_matrix_v5)
+# rownames(p_values) <- rownames(cor_matrix_v5)
+# 
+# for (i in 1:(n - 1)) {
+#   for (j in (i + 1):n) {
+#     test <- cor.test(dat_cor_comb_pt[[i]], dat_cor_comb_pt[[j]], method = "spearman")
+#     p_values[i, j] <- test$p.value
+#     p_values[j, i] <- test$p.value
+#   }
+#   p_values[i, i] <- 0
+# }
+# p_values[n, n] <- 0  # Diagonal last cell
+
+# Number of variables
+n <- ncol(dat_cor_comb_pt_v2)
+# Initialize p-value matrix
+p_matrix_v5 <- matrix(NA, n, n)
+colnames(p_matrix_v5) <- colnames(cor_matrix_v5)
+rownames(p_matrix_v5) <- colnames(cor_matrix_v5)
+
+# Loop through all unique variable pairs
+for (i in 1:(n - 1)) {
+  for (j in (i + 1):n) {
+    x <- dat_cor_comb_pt_v2[[i]]
+    y <- dat_cor_comb_pt_v2[[j]]
+    valid_idx <- complete.cases(x, y)
+    
+    if (sum(valid_idx) >= 3) {
+      test <- cor.test(x[valid_idx], y[valid_idx], method = "spearman")
+      p_matrix_v5[i, j] <- test$p.value
+      p_matrix_v5[j, i] <- test$p.value
+    } else {
+      p_matrix_v5[i, j] <- NA
+      p_matrix_v5[j, i] <- NA
+    }
+  }
+  p_matrix_v5[i, i] <- 0
+}
+p_matrix_v5[n, n] <- 0
+
+print("spearman rho")
+print(cor_matrix_v5)
+print("spearman p")
+print(p_matrix_v5)
+
+# Plot Spearman correlation matrix with significance masking
+library(corrplot)
+corrplot(cor_matrix_v5,
+         method = "color",
+         p.mat = p_values,
+         sig.level = 0.05,
+         insig = "blank",
+         addCoef.col = 'grey45',
+         tl.cex = 1,
+         tl.col = "black",
+         number.cex = 1,
+         title = "Spearman Correlations of Parameters and BPRS",
+         mar = c(1, 1, 2, 1))
+
 ```
 
 
