@@ -216,16 +216,16 @@ dat_dprime_bl2_long <- dat_dprime_all_long %>%
 ## visualize density/distribution
 ```{r}
 plot_dist_behav <- function(dat, var) {
-  plot <- ggplot(dat, aes(x = var, group = cttype, fill = cttype)) +
+  plot <- ggplot(dat, aes(x = {{var}}, group = cttype, fill = cttype)) +
   geom_density(adjust = 1.5, alpha = 0.4) +
   facet_wrap(~ interaction(group, visit))
   print(plot)
 }
 
-plot_dist_behav(dat_topx_behav, )
-plot_dist_behav(dat_topx_behav, )
-plot_dist_behav(dat_topx_behav, )
-plot_dist_behav(dat_topx_behav, )
+plot_dist_behav(dat_topx_behav, rt_mdn)
+plot_dist_behav(dat_topx_behav, accuracy)
+# plot_dist_behav(dat_topx_behav, )
+# plot_dist_behav(dat_topx_behav, )
 
 normality_test <- function(dat) {
   results <- dat %>% 
@@ -1785,7 +1785,7 @@ print(p_matrix_v5)
 library(corrplot)
 corrplot(cor_matrix_v5,
          method = "color",
-         p.mat = p_values,
+         #p.mat = p_values,
          sig.level = 0.05,
          insig = "blank",
          addCoef.col = 'grey45',
