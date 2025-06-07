@@ -576,8 +576,8 @@ plot_dprime_sep <- ggplot(dat_dprime_all_long,
                      labels=c("Ctl", "EP")) + 
   scale_linetype_manual(values = c("solid", "dotted"), 
                         labels = c("Visit 1", "Visit 2")) + 
-  scale_x_discrete(labels = c("d_context" = "d' Context", 
-                              "d_expect" = "d' Expectancy")) +
+  scale_x_discrete(labels = c("d_context" = "d'-context", 
+                              "d_expect" = "d'-expectancy")) +
   scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
                      labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
   theme(panel.grid.major = element_blank(),
@@ -590,7 +590,6 @@ plot_dprime_sep <- ggplot(dat_dprime_all_long,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_dprime_sep
-
 # ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Sep.png"),
 #        plot_dprime_sep, width = 6, height = 4)
 
@@ -709,14 +708,14 @@ plot_dprime_comb <- ggplot(dat_dprime_all_long,
                size = 3) + 
   stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
                width = 0.05, size = 1) + 
-  labs(title = "D-prime (d') Statistics", 
+  labs(title = "D-primes (d')", 
        y = "d' Value", 
        x = "d' Type", color = "Group") +
   coord_cartesian(ylim = c(2.0, 3.5)) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
-  scale_x_discrete(labels = c("d_context" = "d' Context", 
-                              "d_expect" = "d' Expectancy")) +
+  scale_x_discrete(labels = c("d_context" = "d'-context", 
+                              "d_expect" = "d'-expectancy")) +
   scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
                      labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
   theme(panel.grid.major = element_blank(),
@@ -776,7 +775,7 @@ plot_rt_comb <- ggplot(dat_topx_all,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_comb
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"), 
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.png"),
 #        plot_rt_comb, width = 6, height = 4)
 
 ### LMER RT BL1+BL2 Comb (w/o visit)
@@ -974,8 +973,8 @@ plot_bl <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  # ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
-  #        plot, width = 6, height = 4)
+  ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
+         plot, width = 6, height = 4)
 }
 
 # plot multiple visits (BL1 and BL2)
@@ -1007,8 +1006,8 @@ plot_bl_sep <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  # ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
-  #        plot, width = 6, height = 4)
+  ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
+         plot, width = 6, height = 4)
 }
 ```
 
@@ -1140,7 +1139,7 @@ lmer_check(mod_z_comb, "z_comb")
 
 ### drift rate (v)
 ```{r}
-plot_bl_sep(v_dat_all, "Drift Rates at Visit 1 & 2", "Drift Rate (v)", "DriftRate_Sep", .7, 3)
+plot_bl_sep(v_dat_all, "Drift Rates", "Drift Rate (v)", "DriftRate_Sep", .7, 3)
 lmer_bl_sep(v_dat_all, "mod_v_sep", posthoc = TRUE)
 r.squaredGLMM(mod_v_sep)
 lmer_check(mod_v_sep, "v_sep")
@@ -1148,7 +1147,7 @@ lmer_check(mod_v_sep, "v_sep")
 
 ### decision threshold (a)
 ```{r}
-plot_bl_sep(a_dat_all, "Decision Thresholds at Visit 1 & 2", "Decision Threshold (a)", "DecisionThreshold_Sep", .47, .63)
+plot_bl_sep(a_dat_all, "Decision Thresholds", "Decision Threshold (a)", "DecisionThreshold_Sep", .47, .63)
 lmer_bl_sep(a_dat_all, "mod_a_sep", posthoc = TRUE)
 r.squaredGLMM(mod_a_sep)
 lmer_check(mod_a_sep, "a_sep")
@@ -1156,7 +1155,7 @@ lmer_check(mod_a_sep, "a_sep")
 
 ### non-decision time (t)
 ```{r}
-plot_bl_sep(t_dat_all, "Non-Decision Times at Visit 1 & 2", "Non-Decision Time (t)", "NonDecisionTime_Sep", .17, .25)
+plot_bl_sep(t_dat_all, "Non-Decision Times", "Non-Decision Time (t)", "NonDecisionTime_Sep", .17, .25)
 lmer_bl_sep(t_dat_all, "mod_t_sep", posthoc = TRUE)
 r.squaredGLMM(mod_t_sep)
 lmer_check(mod_t_sep, "t_sep")
@@ -1164,7 +1163,7 @@ lmer_check(mod_t_sep, "t_sep")
 
 ### bias (z)
 ```{r}
-plot_bl_sep(z_dat_all, "Degrees of Bias at Visit 1 & 2", "Degree of Bias (w)", "Bias_Sep", .5, .65)
+plot_bl_sep(z_dat_all, "Degrees of Bias", "Degree of Bias (w)", "Bias_Sep", .5, .65)
 lmer_bl_sep(z_dat_all, "mod_z_sep", posthoc = TRUE)
 r.squaredGLMM(mod_z_sep)
 lmer_check(mod_z_sep, "z_sep")
@@ -1634,7 +1633,7 @@ plot_drift_neg <- ggplot(v_dat_all_pt, aes(x=mean, y=bprs_negative,
        x="Drift Rate", y = "Negative Symptoms") +
   theme_classic()
 print(plot_drift_neg)
-ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", "Drift_Rate_Neg_Sxs", ".png"), plot_drift_neg, width = 5, height = 3)
+# ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", "Drift_Rate_Neg_Sxs", ".png"), plot_drift_neg, width = 5, height = 3)
 
 # plot BL1 AY only
 v_dat_all_pt_bl1_AY <- v_dat_all_pt %>% filter(cttype == "AY" & visit == "BL1")
