@@ -13,7 +13,8 @@ rm(list=ls())
 pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, purrr, performance)
 ```
 
-# read in fMRI data
+# fMRI data
+## read in
 ```{r}
 # read in BL1 fMRI data
 dat_mri <- read.csv("~/Documents/umn_work/topx_analyses/data/nontask_data/zstats_schaefer400+Tian_B-A.csv")
@@ -58,268 +59,7 @@ colnames(mri_sample_subjx)[1] = "subj"
 # write.csv(mri_sample_subjx,file=paste0("/Users/arend103/Documents/umn_work/topx_analyses/topx_mri_ddm/topx_mri_sample_subjx_",gsub("-", "", Sys.Date()), ".csv"), row.names = FALSE)
 ```
 
-# read in DDM data
-```{r}
-# read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
-# Custom function to read, select, and join datasets
-process_data <- function(types, column_mappings) {
-  datasets <- lapply(types, function(type) {
-    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241031_ddm_data/bl1/stats_", type, ".csv")
-    read.csv(file_path) %>%
-      select(all_of(column_mappings[[type]]))
-  })
-  
-  # Perform full joins on all datasets by "participant_id"
-  Reduce(function(x, y) full_join(x, y, by = "participant_id"), datasets) %>%
-    mutate(visit = "BL1", .after = participant_id)
-}
-
-# Column mappings for different file types
-column_mappings <- list(
-  v = c("participant_id", "v_ax", "v_ay", "v_bx", "v_by"),
-  a = c("participant_id", "a_ax", "a_ay", "a_bx", "a_by"),
-  t = c("participant_id", "t_ax", "t_ay", "t_bx", "t_by"),
-  z = c("participant_id", "z_a", "z_b")
-)
-
-# Process data for each block
-types <- names(column_mappings)
-dat_ddm_bl1_wide <- process_data(types, column_mappings)
-
-# Rename, pivot longer, and add `subj_type` column
-dat_ddm_bl1 <- dat_ddm_bl1_wide %>%
-  rename(subj = participant_id) %>%
-  pivot_longer(
-    cols = c(v_ax, v_ay, v_bx, v_by, a_ax, a_ay, a_bx, a_by, 
-             t_ax, t_ay, t_bx, t_by, z_a, z_b),
-    names_to = c("parameter", "cttype"), 
-    names_sep = "_", 
-    values_to = "mean"
-  ) %>%
-  mutate(
-    group = case_when(
-      str_sub(subj, 1, 3) == "SP1" ~ "Control",
-      str_sub(subj, 1, 3) == "SP2" ~ "Patient",
-      TRUE ~ NA
-    )
-  )
-
-# rename trials
-dat_ddm_bl1 <- dat_ddm_bl1 %>% 
-  mutate(cttype = case_when(cttype == "ax" ~ "AX",
-                             cttype == "ay" ~ "AY",
-                             cttype == "bx" ~ "BX", 
-                             cttype == "by" ~ "BY",
-                             cttype == "a" ~ "A",
-                             cttype == "b" ~ "B",
-                             TRUE ~ cttype))
-
-# subset fMRI + DDM data
-# compare subjects in MRI and DDM datasets and merge cases with both
-setdiff(dat_ddm_bl1$subj, dat_mri$subj) # in DDM not MRI: n = 86
-setdiff(dat_mri$subj, dat_ddm_bl1$subj) # in MRI not DDM: n = 0
-# subset DDM by available MRI data
-dat_ddm_bl1 <- subset(dat_ddm_bl1, subj %in% mri_sample_subjx$subj)
-# subset MRI by available DDM data
-dat_mri <- subset(dat_mri, subj %in% dat_ddm_bl1$subj)
-
-# save list of DDM+MRI subject IDs
-mri_ddm_sample_subjx <- unique(dat_ddm_bl1$subj)
-mri_ddm_sample_subjx <- as.data.frame(mri_ddm_sample_subjx)
-colnames(mri_ddm_sample_subjx)[1] = "subj"
-```
-
-# analyze + plot DDM
-```{r}
-# test group differences in drift rate
-### BL1 DDM LMER
-dat_ddm_bl1_v <- filter(dat_ddm_bl1, parameter == "v")
-
-# don't need to use lmer because no repeated measures
-mod_v <- lm(mean ~ group * cttype, data = dat_ddm_bl1_v)
-check_model(mod_v)
-anova(mod_v)
-
-# descriptives - means by group 
-(v_desc <- dat_ddm_bl1_v %>%
-  group_by(group, cttype) %>%
-  summarise(mean = mean(mean)))
-
-# transform AY drift rate
-dat_ddm_bl1_v_Abs <- dat_ddm_bl1_v %>%
-  mutate(mean = if_else(cttype == "AY", -1 * mean, mean))
-
-# plot
-v_plot <- ggplot(dat_ddm_bl1_v_Abs,
-                 aes(x = cttype, y = mean, group = group)) +
-  stat_summary(fun ="mean", geom ="line", 
-               aes(color = group), linewidth = 1.5,
-               position = position_dodge(width = 0.3)) + 
-  stat_summary(fun="mean", geom="point",
-               aes(color = group), size = 3,
-               position = position_dodge(width = 0.3)) +
-  stat_summary(fun.data = mean_se, geom = "errorbar",
-               aes(color = group), width = 0.2, linewidth = 1,
-               position = position_dodge(width = 0.3)) + 
-  labs(title = "TOPX Drift Rates", y = "Drift Rate (v)",
-       x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(0.5, 3.2)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                     labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(), 
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-print(v_plot)
-# save plot
-ggsave(paste0("graphs/", 
-              format(Sys.Date(), "%Y%m%d"),
-              "_dlpfc_driftrate_bl1.png"),
-       v_plot, width = 6, height = 4)
-```
-
-# read in TOPX data
-```{r}
-# read in TOPX data
-dat_topx <- read.csv("~/Documents/umn_work/topx_analyses/data/topx_aggregate_data/aggregate_topx_20250315.csv")
-
-# keep BL1 data only and rename variables
-dat_topx <- dat_topx %>% 
-  filter(visit == "BL1") %>% 
-  rename(group = subj_type, cttype = trial_type)
-
-# subset by available MRI data
-# compare subjects in MRI and TOPX datasets and merge cases with both
-setdiff(dat_topx$subj, dat_mri$subj) # in TOPX not MRI: n = 107
-setdiff(dat_mri$subj, dat_topx$subj) # in MRI not DDM: n = 0
-dat_topx <- subset(dat_topx, subj %in% mri_ddm_sample_subjx$subj)
-```
-
-# analyze + plot TOPX
-```{r}
-### BL 1 Error LMER
-mod_err <- lmer(error ~ group * cttype + (1|subj), data = dat_topx)
-anova(mod_err, type = 3) # trial significant, group and interaction not
-# mod_err <- lm(error ~ group * cttype, data = dat_topx)
-# anova(mod_err) # closer to significant, but not appropriate - need random effect
-# tried t-test but not significant - ugh this sample is so small!
-dat_topx_bx <- filter(dat_topx, dat_topx$cttype == "BX")
-t.test(error ~ group, dat_topx_bx)
-
-### BL1 RT LMER
-mod_rt <- lmer(rt_mdn ~ group * cttype + (1|subj), data = dat_topx)
-anova(mod_rt, type = 3) # trial singificant, group and interaction trending
-
-# descriptives - means by group 
-(topx_desc <- 
-  dat_topx %>%
-  group_by(group, cttype) %>%
-  summarise(error_mn = mean(error, na.rm = TRUE),
-            err_sd = sd(error, na.rm = TRUE),
-            rt_mn = mean(rt_mdn, na.rm = TRUE),
-            rt_sd = sd(rt_mdn, na.rm = TRUE)))
-
-# plot error BL1
-plot_err_bl1 <- ggplot(dat_topx, 
-                        aes(x= cttype, y=error, group = group)) + 
-  stat_summary(fun="mean", geom="line", aes(color = group),
-               linewidth = 1.5, 
-               position = position_dodge(width = 0.3)) +
-  stat_summary(fun="mean", geom="point", aes(color = group),
-               size = 3, position = position_dodge(width = 0.3)) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar",
-               aes(color = group), 
-               width = .2, linewidth = 1,
-               position = position_dodge(width = 0.3)) + 
-  labs(title = "TOPX Error Rates", 
-       y = "Error Rate", x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(0.04, .31)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                   labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(), 
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_err_bl1
-# ggsave(paste0("graphs/", 
-#               format(Sys.Date(), "%Y%m%d"),
-#               "_dlpfc_error_bl1.png"),
-#        plot_err_bl1, width = 6, height = 4)
-
-# plot rt BL1
-plot_rt_bl1 <- ggplot(dat_topx, 
-                        aes(x= cttype, y=rt_mdn, group = group)) + 
-  stat_summary(fun="mean", geom="line", aes(color = group),
-               linewidth = 1.5, 
-               position = position_dodge(width = 0.3)) +
-  stat_summary(fun="mean", geom="point", aes(color = group),
-               size = 3, position = position_dodge(width = 0.3)) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar",
-               aes(color = group), 
-               width = .2, linewidth = 1,
-               position = position_dodge(width = 0.3)) + 
-  labs(title = "TOPX Reaction Times", 
-       y = "Median RT (ms)", x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(280, 600)) +
-  scale_color_manual(values=c("#2C737F", "#AA8829"),
-                   labels=c("Ctl", "EP")) + 
-  theme(panel.grid.major = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(), 
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
-plot_rt_bl1
-# ggsave(paste0("graphs/", 
-#               format(Sys.Date(), "%Y%m%d"),
-#               "_dlpfc_rt_bl1.png"),
-#        plot_rt_bl1, width = 6, height = 4)
-```
-
-# read in demographics
-```{r}
-#dat_demo <- read.csv("~/Documents/umn_work/topx_analyses/data/nontask_data/demographics/step_demographics_dx_20241101.csv")
-dat_demo <- read.csv("~/Documents/umn_work/topx_analyses/data/nontask_data/demographics/step_demo_dx_20250125.csv")
-
-## function to remove test cases, fix name formatting -------
-clean_data <- function(data) {
-  # rename subject id as "subj"
-  data <- data %>% rename(subj = record_id)
-  # identify test rows and filter them out
-  ex_strings <- c('TEST', "Test", "test", "NDAR", "archive")
-  dat_probs <- data[grep(paste(ex_strings, collapse='|'), 
-                         data$subj, ignore.case = TRUE), ]
-  data <- data[!data$subj %in% dat_probs$subj, ]
-  # remove the "proofpoint" string from subj ids
-  data$subj <- gsub('PROOFPOINT|-|[*]','', data$subj)
-  # trim white spaces
-  data$subj <- trimws(data$subj)
-  return(as.data.frame(data))
-}
-
-dat_demo <- clean_data(dat_demo)
-
-setdiff(dat_demo$subj, dat_mri$subj) # in demo not mri: n = 142
-setdiff(dat_mri$subj, dat_demo$subj) # in mri not demo: n = 0
-
-# subset by available DDM+MRI data
-dat_demo <- dat_demo %>%
-  filter(as.character(subj) %in% as.character(dat_mri$subj))
-```
-
+## create networks
 # subset MRI data
 ## Bryon's rec
 ```{r}
@@ -569,6 +309,424 @@ dat_dlPFC_rh <- dat_dlPFC %>%
   select(subj, visit, group, matches("RH_"))
 ```
 
+# DDM data
+## read in
+```{r}
+# read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
+# Custom function to read, select, and join datasets
+process_data <- function(types, column_mappings) {
+  datasets <- lapply(types, function(type) {
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241031_ddm_data/bl1/stats_", type, ".csv")
+    read.csv(file_path) %>%
+      select(all_of(column_mappings[[type]]))
+  })
+  
+  # Perform full joins on all datasets by "participant_id"
+  Reduce(function(x, y) full_join(x, y, by = "participant_id"), datasets) %>%
+    mutate(visit = "BL1", .after = participant_id)
+}
+
+# Column mappings for different file types
+column_mappings <- list(
+  v = c("participant_id", "v_ax", "v_ay", "v_bx", "v_by"),
+  a = c("participant_id", "a_ax", "a_ay", "a_bx", "a_by"),
+  t = c("participant_id", "t_ax", "t_ay", "t_bx", "t_by"),
+  z = c("participant_id", "z_a", "z_b")
+)
+
+# Process data for each block
+types <- names(column_mappings)
+dat_ddm_bl1_wide <- process_data(types, column_mappings)
+
+# Rename, pivot longer, and add `subj_type` column
+dat_ddm_bl1 <- dat_ddm_bl1_wide %>%
+  rename(subj = participant_id) %>%
+  pivot_longer(
+    cols = c(v_ax, v_ay, v_bx, v_by, a_ax, a_ay, a_bx, a_by, 
+             t_ax, t_ay, t_bx, t_by, z_a, z_b),
+    names_to = c("parameter", "cttype"), 
+    names_sep = "_", 
+    values_to = "mean"
+  ) %>%
+  mutate(
+    group = case_when(
+      str_sub(subj, 1, 3) == "SP1" ~ "Control",
+      str_sub(subj, 1, 3) == "SP2" ~ "Patient",
+      TRUE ~ NA
+    )
+  )
+
+# rename trials
+dat_ddm_bl1 <- dat_ddm_bl1 %>% 
+  mutate(cttype = case_when(cttype == "ax" ~ "AX",
+                             cttype == "ay" ~ "AY",
+                             cttype == "bx" ~ "BX", 
+                             cttype == "by" ~ "BY",
+                             cttype == "a" ~ "A",
+                             cttype == "b" ~ "B",
+                             TRUE ~ cttype))
+
+# subset fMRI + DDM data
+# compare subjects in MRI and DDM datasets and merge cases with both
+setdiff(dat_ddm_bl1$subj, dat_mri$subj) # in DDM not MRI: n = 86
+setdiff(dat_mri$subj, dat_ddm_bl1$subj) # in MRI not DDM: n = 0
+# subset DDM by available MRI data
+dat_ddm_bl1 <- subset(dat_ddm_bl1, subj %in% mri_sample_subjx$subj)
+# subset MRI by available DDM data
+dat_mri <- subset(dat_mri, subj %in% dat_ddm_bl1$subj)
+
+# save list of DDM+MRI subject IDs
+mri_ddm_sample_subjx <- unique(dat_ddm_bl1$subj)
+mri_ddm_sample_subjx <- as.data.frame(mri_ddm_sample_subjx)
+colnames(mri_ddm_sample_subjx)[1] = "subj"
+```
+
+## analyze + plot DDM
+```{r}
+# test group differences in drift rate
+### BL1 DDM LMER
+dat_ddm_bl1_v <- filter(dat_ddm_bl1, parameter == "v")
+
+# don't need to use lmer because no repeated measures
+mod_v <- lm(mean ~ group * cttype, data = dat_ddm_bl1_v)
+check_model(mod_v)
+anova(mod_v)
+
+# descriptives - means by group 
+(v_desc <- dat_ddm_bl1_v %>%
+  group_by(group, cttype) %>%
+  summarise(mean = mean(mean)))
+
+# transform AY drift rate
+dat_ddm_bl1_v_Abs <- dat_ddm_bl1_v %>%
+  mutate(mean = if_else(cttype == "AY", -1 * mean, mean))
+
+# plot
+v_plot <- ggplot(dat_ddm_bl1_v_Abs,
+                 aes(x = cttype, y = mean, group = group)) +
+  stat_summary(fun ="mean", geom ="line", 
+               aes(color = group), linewidth = 1.5,
+               position = position_dodge(width = 0.3)) + 
+  stat_summary(fun="mean", geom="point",
+               aes(color = group), size = 3,
+               position = position_dodge(width = 0.3)) +
+  stat_summary(fun.data = mean_se, geom = "errorbar",
+               aes(color = group), width = 0.2, linewidth = 1,
+               position = position_dodge(width = 0.3)) + 
+  labs(title = "TOPX Drift Rates", y = "Drift Rate (v)",
+       x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(0.5, 3.2)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+print(v_plot)
+# save plot
+ggsave(paste0("graphs/", 
+              format(Sys.Date(), "%Y%m%d"),
+              "_dlpfc_driftrate_bl1.png"),
+       v_plot, width = 6, height = 4)
+```
+
+# TOPX data
+## read in
+```{r}
+# read in TOPX data
+dat_topx <- read.csv("~/Documents/umn_work/topx_analyses/data/topx_aggregate_data/aggregate_topx_20250315.csv")
+
+# keep BL1 data only and rename variables
+dat_topx <- dat_topx %>% 
+  filter(visit == "BL1") %>% 
+  rename(group = subj_type, cttype = trial_type)
+
+# subset by available MRI data
+# compare subjects in MRI and TOPX datasets and merge cases with both
+setdiff(dat_topx$subj, dat_mri$subj) # in TOPX not MRI: n = 107
+setdiff(dat_mri$subj, dat_topx$subj) # in MRI not DDM: n = 0
+dat_topx <- subset(dat_topx, subj %in% mri_ddm_sample_subjx$subj)
+```
+
+## analyze + plot TOPX
+```{r}
+### BL 1 Error LMER
+mod_err <- lmer(error ~ group * cttype + (1|subj), data = dat_topx)
+anova(mod_err, type = 3) # trial significant, group and interaction not
+# mod_err <- lm(error ~ group * cttype, data = dat_topx)
+# anova(mod_err) # closer to significant, but not appropriate - need random effect
+# tried t-test but not significant - ugh this sample is so small!
+dat_topx_bx <- filter(dat_topx, dat_topx$cttype == "BX")
+t.test(error ~ group, dat_topx_bx)
+
+### BL1 RT LMER
+mod_rt <- lmer(rt_mdn ~ group * cttype + (1|subj), data = dat_topx)
+anova(mod_rt, type = 3) # trial singificant, group and interaction trending
+
+# descriptives - means by group 
+(topx_desc <- 
+  dat_topx %>%
+  group_by(group, cttype) %>%
+  summarise(error_mn = mean(error, na.rm = TRUE),
+            err_sd = sd(error, na.rm = TRUE),
+            rt_mn = mean(rt_mdn, na.rm = TRUE),
+            rt_sd = sd(rt_mdn, na.rm = TRUE)))
+
+# plot error BL1
+plot_err_bl1 <- ggplot(dat_topx, 
+                        aes(x= cttype, y=error, group = group)) + 
+  stat_summary(fun="mean", geom="line", aes(color = group),
+               linewidth = 1.5, 
+               position = position_dodge(width = 0.3)) +
+  stat_summary(fun="mean", geom="point", aes(color = group),
+               size = 3, position = position_dodge(width = 0.3)) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar",
+               aes(color = group), 
+               width = .2, linewidth = 1,
+               position = position_dodge(width = 0.3)) + 
+  labs(title = "TOPX Error Rates", 
+       y = "Error Rate", x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(0.04, .31)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                   labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_err_bl1
+# ggsave(paste0("graphs/", 
+#               format(Sys.Date(), "%Y%m%d"),
+#               "_dlpfc_error_bl1.png"),
+#        plot_err_bl1, width = 6, height = 4)
+
+# plot rt BL1
+plot_rt_bl1 <- ggplot(dat_topx, 
+                        aes(x= cttype, y=rt_mdn, group = group)) + 
+  stat_summary(fun="mean", geom="line", aes(color = group),
+               linewidth = 1.5, 
+               position = position_dodge(width = 0.3)) +
+  stat_summary(fun="mean", geom="point", aes(color = group),
+               size = 3, position = position_dodge(width = 0.3)) + 
+  stat_summary(fun.data = mean_se, geom = "errorbar",
+               aes(color = group), 
+               width = .2, linewidth = 1,
+               position = position_dodge(width = 0.3)) + 
+  labs(title = "TOPX Reaction Times", 
+       y = "Median RT (ms)", x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = c(280, 600)) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                   labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face="bold", size = 16),
+        axis.title = element_text(face="bold", size = 20),
+        legend.text = element_text(face="bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_rt_bl1
+# ggsave(paste0("graphs/", 
+#               format(Sys.Date(), "%Y%m%d"),
+#               "_dlpfc_rt_bl1.png"),
+#        plot_rt_bl1, width = 6, height = 4)
+```
+
+# demographics
+## read in
+```{r}
+#dat_demo <- read.csv("~/Documents/umn_work/topx_analyses/data/nontask_data/demographics/step_demographics_dx_20241101.csv")
+dat_demo <- read.csv("~/Documents/umn_work/topx_analyses/data/nontask_data/demographics/step_demo_dx_20250125.csv")
+
+## function to remove test cases, fix name formatting -------
+clean_data <- function(data) {
+  # rename subject id as "subj"
+  data <- data %>% rename(subj = record_id)
+  # identify test rows and filter them out
+  ex_strings <- c('TEST', "Test", "test", "NDAR", "archive")
+  dat_probs <- data[grep(paste(ex_strings, collapse='|'), 
+                         data$subj, ignore.case = TRUE), ]
+  data <- data[!data$subj %in% dat_probs$subj, ]
+  # remove the "proofpoint" string from subj ids
+  data$subj <- gsub('PROOFPOINT|-|[*]','', data$subj)
+  # trim white spaces
+  data$subj <- trimws(data$subj)
+  return(as.data.frame(data))
+}
+dat_demo <- clean_data(dat_demo)
+
+# subset by available DDM+MRI data
+setdiff(dat_demo$subj, dat_mri$subj) # in demo not mri: n = 142
+setdiff(dat_mri$subj, dat_demo$subj) # in mri not demo: n = 0
+dat_demo <- dat_demo %>%
+  filter(as.character(subj) %in% as.character(dat_mri$subj))
+
+# recode status_ppt_type (numeric) to group (labelled category)
+dat_demo$group <- ifelse(dat_demo$status_ppt_type == 1, "Control", 
+                     ifelse(dat_demo$status_ppt_type == 2, 
+                            "Patient", NA))
+
+# recode diagnosis - 5 split
+# before: 0=control, 1=Sz, 2=SzAff, 3=Szform, 4=NOS, 5=BP, 6=MDD, 7=other
+# now: 0 = control, 1 = Sz/SzAff/Szform, 2 = BP, 3 = MDD, 4 = NOS/other
+dat_demo$dx_5split <- as.character(dat_demo$primary_dx)
+dat_demo$dx_5split <- as.numeric(
+  dplyr::recode(dat_demo$dx_5split,
+                "0" = "0",
+                "1" = "1",
+                "2" = "1",
+                "3" = "1",
+                "4" = "4",
+                "5" = "2",
+                "6" = "3",
+                "7" = "4"))
+
+# recode affective/nonaffective psychosis
+dat_demo$dx_affect <- as.character(dat_demo$primary_dx)
+dat_demo$dx_affect <- as.numeric(
+  dplyr::recode(dat_demo$dx_affect,
+                "0" = "0", # control
+                "1" = "1", # schizophrenia -> non-affective (NA)
+                "2" = "1", # schizoaffective -> NA
+                "3" = "1", # schizophreniform -> NA
+                "4" = "1", # psychosis NOS -> NA
+                "5" = "2", # bipolar with psychosis -> Aff
+                "6" = "2", # major depression with psychosis - Aff
+                "7" = "1")) # other unspecified psychosis -> NA
+
+
+# recode gender into one variable, rather than two
+dat_demo$gender <- if_else(is.na(dat_demo$gender_cis), dat_demo$gender_trans, dat_demo$gender_cis)
+
+# recode race NAs/other
+dat_demo <- dat_demo %>%
+  mutate(race = ifelse(is.na(race), 6, race))
+dat_demo <- dat_demo %>%
+  mutate(race_5split = ifelse(race == 6, 5, race))
+```
+
+## analyze demographics
+```{r}
+# number of patients and controls
+table(dat_demo$group)
+
+### create datasets by group ----------
+dat_demo_pt <- subset(dat_demo, group == "Patient") 
+dat_demo_ctl <- subset(dat_demo, group == "Control")
+nPt <- nrow(dat_demo_pt)
+nCtl <- nrow(dat_demo_ctl)
+```
+
+### functions
+```{r, echo = FALSE}
+# function for count, %, and NA table - 2 split (pt/ctl)
+table_ct_pct_2split <- function(var) {
+  
+  # Calculate distribution and percentages for patients
+  count_pt <- table(dat_demo_pt[[var]])
+  pct_pt <- round((count_pt/nPt)*100, 0)
+  na_pt <- sum(is.na(dat_demo_pt[[var]]))
+  
+  # Calculate distribution and percentages for controls
+  count_ctl <- table(dat_demo_ctl[[var]])
+  pct_ctl <- round((count_ctl/nCtl)*100, 0)
+  na_ctl <- sum(is.na(dat_demo_ctl[[var]]))
+  
+  # Create a summary table
+  summary <- tibble(
+    Group = c(rep("Patient", length(count_pt) + 1), 
+            rep("Control", length(count_ctl) + 1)),
+    Variable = c(names(count_pt), "NA", 
+             names(count_ctl), "NA"),
+    Count = c(as.numeric(count_pt), na_pt,
+            as.numeric(count_ctl), na_ctl),
+    Percentage = c(as.numeric(pct_pt), NA,
+                 as.numeric(pct_ctl), NA)
+    )
+  summary
+}
+
+# function for mean, sd, and NA table - 2 split (pt/ctl)
+table_m_sd_2split <- function(var) {
+  
+  # Calculate mean and standard deviation for patients
+  mean_pt <- mean(dat_demo_pt[[var]], na.rm = TRUE)
+  sd_pt <- sd(dat_demo_pt[[var]], na.rm = TRUE)
+  
+  # Calculate mean and standard deviation for controls
+  mean_ctl <- mean(dat_demo_ctl[[var]], na.rm = TRUE)
+  sd_ctl <- sd(dat_demo_ctl[[var]], na.rm = TRUE)
+  
+  # Count missing values for patients and controls
+  na_pt <- sum(is.na(dat_demo_pt[[var]]))
+  na_ctl <- sum(is.na(dat_demo_ctl[[var]]))
+  
+  # Create a summary table
+  summary <- tibble(
+    Group = c("Patient", "Control"),
+    Mean = c(round(mean_pt, 2), round(mean_ctl, 2)),
+    SD = c(round(sd_pt, 2), round(sd_ctl, 2)),
+    Missing_Values = c(na_pt, na_ctl)  # Add missing values count
+  )
+  summary %>% mutate(across(where(is.numeric), as.character)) # this is needed to report two digits
+}
+```
+
+### report means
+```{r}
+#gender: 1=man, 2=woman, 3=nonbinary/other
+table_ct_pct_2split("gender")
+
+# age
+table_m_sd_2split("age")
+
+# race: 0=white, 1=black/african am, 2=indigenous am/alaska native, 3=asian/asian am, 4=native hawaiian/pacific islander, 5=multiracial/other
+table_ct_pct_2split("race_5split")
+
+# ethnicity
+table_ct_pct_2split("hispanic")
+
+# dx: 0 = control, 1 = Sz/SzAff/Szform, 2 = BP, 3 = MDD, 4 = NOS/other
+table_ct_pct_2split("dx_5split")
+```
+
+### group differences
+```{r}
+# gender - report fisher
+chisq.test(dat_demo$gender, dat_demo$group)
+fisher.test(dat_demo$gender, dat_demo$group)
+
+
+# age
+# welch's two-sample t-test - report this
+t.test(age ~ status_ppt_type, data = dat_demo)
+# student t-test (assumes equal variances)
+t.test(age ~ status_ppt_type, data = dat_demo, var.equal = TRUE)
+# test group variances to see if t-test are appropriate
+#leveneTest(dat_demo$age, dat_demo$status_ppt_type, data = dat_demo)
+var.test(age ~ status_ppt_type, data = dat_demo)
+# wilcox aka mann-whitney U test
+wilcox.test(age ~ status_ppt_type, data = dat_demo)
+
+# race - report fisher
+chisq.test(dat_demo$race, dat_demo$group)
+fisher.test(dat_demo$race, dat_demo$group)
+
+# ethnicity
+chisq.test(dat_demo$hispanic, dat_demo$group)
+```
+
+# analyses
 ```{r}
 t.test(dlPFC_sum ~ group, dat_dlPFC)
 t.test(ContA_sum ~ group, dat_dlPFC)
@@ -584,31 +742,129 @@ dat_dlPFC %>%
     ContB_sum = mean(ContB_sum, na.rm = TRUE),
     ContC_sum = mean(ContC_sum, na.rm = TRUE))
 
+# Helper function for standard error
+se <- function(x) sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x)))
+
+# Reshape to long format
+dat_dlPFC_long <- dat_dlPFC %>%
+  select(group, ContA_sum, ContB_sum, ContC_sum) %>%
+  pivot_longer(cols = starts_with("Cont"), 
+               names_to = "ControlRegion", 
+               values_to = "Value")
+
+# Summarize mean and SE
+dat_dlPFC_summary <- dat_dlPFC_long %>%
+  group_by(group, ControlRegion) %>%
+  summarise(
+    MeanValue = mean(Value, na.rm = TRUE),
+    SE = se(Value),
+    .groups = 'drop'
+  )
+
+# try to add asterisks
+# t-tests: EP vs. HC per region
+p_vals <- dat_dlPFC_long %>%
+  group_by(ControlRegion) %>%
+  summarise(p = t.test(Value ~ group)$p.value)
+
+# assign significance labels
+p_vals <- p_vals %>%
+  mutate(sig_label = case_when(
+    p < 0.001 ~ "***",
+    p < 0.01 ~ "**",
+    p < 0.05 ~ "*",
+    TRUE ~ "ns"
+  ))
+
+# for label placement above error bars
+sig_labels <- dat_dlPFC_summary %>%
+  group_by(ControlRegion) %>%
+  summarise(y = max(MeanValue + SE) * 1.1, .groups = "drop") %>%
+  left_join(p_vals, by = "ControlRegion")
+
+# Relabel x-axis values
+# Step 4: relabel both summary and sig_labels
+new_levels <- c("ContA_sum", "ContB_sum", "ContC_sum")
+new_labels <- c("Control A", "Control B", "Control C")
+
+dat_dlPFC_summary$ControlRegion <- factor(dat_dlPFC_summary$ControlRegion,
+                                         levels = new_levels,
+                                         labels = new_labels)
+
+sig_labels$ControlRegion <- factor(sig_labels$ControlRegion,
+                                   levels = new_levels,
+                                   labels = new_labels)
+
+# set max y value
+y_max <- dat_dlPFC_summary %>%
+  mutate(upper = MeanValue + SE) %>%
+  pull(upper) %>%
+  max() * 1.2  # add 20% space for stars
 ```
 
+# analyze and plot dlPFC
 ```{r}
-dat_comb <- merge(dat_dlPFC, dat_ddm_bl1_v, by = c("subj", "visit", "group"), all.x = TRUE)
+# Plot with error bars
+plot_dlPFC <- ggplot(dat_dlPFC_summary, aes(x = ControlRegion, y = MeanValue, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.6) +
+  geom_errorbar(aes(ymin = MeanValue - SE, ymax = MeanValue + SE),
+                width = 0.2,
+                linewidth = .5,
+                position = position_dodge(width = 0.7)) +
+  # geom_text(data = sig_labels,
+  #           aes(x = ControlRegion, y = y, label = sig_label),
+  #           inherit.aes = FALSE,
+  #           size = 8, fontface = "bold") +
+  labs(title = "dlPFC Activation during B>A", x = "Schaefer Network", 
+       y = "Mean Activation", fill = "Group") +
+  scale_fill_manual(values = c("Patient" = "#AA8829", "Control" = "#2C737F"),
+                    labels = c("Control" = "Ctl", "Patient" = "EP")) +
+  #coord_cartesian(ylim = c(0, y_max)) +
+  coord_cartesian(ylim = c(0, 32)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face = "bold", size = 16),
+        axis.title = element_text(face = "bold", size = 20),
+        legend.text = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold", size = 16),
+        plot.title = element_text(face = "bold", size = 22))
+plot_dlPFC
+ggsave(paste0("graphs/",
+              format(Sys.Date(), "%Y%m%d"),
+              "_dlpfc_activation_bl1.png"),
+       plot_dlPFC, width = 6, height = 4)
+```
+
+
+```{r}
+dat_v_comb <- merge(dat_ddm_bl1_v, dat_dlPFC, by = c("subj", "visit", "group"), all.x = TRUE)
 
 # run LMER with all cttypes
 # mod_all <- lmer(mean ~ dlPFC_sum * cttype * group + (1|subj), data = dat_comb) # not fitting
 # mod_all <- lmer(mean ~ dlPFC_sum * cttype + group + (1|subj), data = dat_comb) # nonsig int
 # mod_all <- lmer(mean ~ dlPFC_sum + cttype + group + (1|subj), data = dat_comb) # need group int for interpretation
-mod_all <- lmer(mean ~ dlPFC_sum * group + cttype + (1|subj), data = dat_comb) # nonsig int
+mod_all <- lmer(mean ~ dlPFC_sum * group + cttype + (1|subj), data = dat_v_comb) # nonsig int
 anova(mod_all, type = 3)
+summary(mod_all)
 # posthocs
-print(emtrends(mod_all, pairwise ~ group, var = "dlPFC_sum"))
-print(emmeans(mod_all, list(pairwise ~ cttype), adjust = "mvt"))
-print(emmeans(mod_all, list(pairwise ~ group), adjust = "mvt"))
+print(emtrends(mod_all, pairwise ~ group, var = "dlPFC_sum")) # group by dlPFC
+#print(emmeans(mod_all, list(pairwise ~ dlPFC), adjust = "mvt")) # v by trial type
+print(emmeans(mod_all, list(pairwise ~ cttype), adjust = "mvt")) # v by trial type
+print(emmeans(mod_all, list(pairwise ~ group), adjust = "mvt")) # v by group
 
 # LMs separated by trial type
-dat_comb_ax <- filter(dat_comb, cttype == "AX")
-dat_comb_ay <- filter(dat_comb, cttype == "AY")
-dat_comb_bx <- filter(dat_comb, cttype == "BX")
-dat_comb_by <- filter(dat_comb, cttype == "BY")
+dat_comb_ax <- filter(dat_v_comb, cttype == "AX")
+dat_comb_ay <- filter(dat_v_comb, cttype == "AY")
+dat_comb_bx <- filter(dat_v_comb, cttype == "BX")
+dat_comb_by <- filter(dat_v_comb, cttype == "BY")
 
 mod_ax <- lm(mean ~ dlPFC_sum * group, data = dat_comb_ax)
 anova(mod_ax)
 print(emmeans(mod_ax, list(pairwise ~ group), adjust = "mvt"))
+print(emtrends(mod_ax, pairwise ~ group, var = "dlPFC_sum"))
 cor.test(dat_comb_ax$mean, dat_comb_ax$dlPFC)
 
 mod_ay <- lm(mean ~ dlPFC_sum * group, data = dat_comb_ay)
@@ -624,14 +880,17 @@ anova(mod_by)
 dat_comb_ax_pt <- filter(dat_comb_ax, group == "Patient")
 mod_ax_2 <- lm(mean ~ dlPFC_sum, data = dat_comb_ax_pt)
 anova(mod_ax_2)
+summary(mod_ax_2)
+#print(emtrends(mod_ax_2, list(pairwise ~ dlPFC_sum), adjust = "mvt"))
 
 # symptom relationships
 # error - need to merge in BPRS
-cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$bprs_neg)
-cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$bprs_disorg)
-cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$bprs_pos)
-cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$gfr)
+# cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$bprs_neg)
+# cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$bprs_disorg)
+# cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$bprs_pos)
+# cor.test(dat_comb_ax_pt$dlPFC_sum, dat_comb_ax_pt$gfr)
 ```
+
 
 # GOAL: linear regression to test if dlPFC activation predicts DR
 More specifically, we 1) examined DRs associated with all trial types during this task, as well as cognitive control–associated DR, 2) recapitulated previously observed deficits in DLPFC activation during cognitive control in SZ, and 3) used linear regression to examine the extent to which DLPFC activation predicts DR in SZ and healthy control (HC) participants.
