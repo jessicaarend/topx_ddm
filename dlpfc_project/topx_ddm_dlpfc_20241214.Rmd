@@ -10,7 +10,7 @@ output: html_document
 rm(list=ls())
 
 # read in packages
-pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, purrr, performance)
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, purrr, performance, car)
 ```
 
 # fMRI data
@@ -187,24 +187,111 @@ mri_ddm_sample_subjx <- unique(dat_ddm_bl1$subj)
 mri_ddm_sample_subjx <- as.data.frame(mri_ddm_sample_subjx)
 colnames(mri_ddm_sample_subjx)[1] = "subj"
 ```
+## DDM intercepts
+```{r}
+# Custom function to read, select, and process datasets
+process_data_intc <- function(block, types, column_mappings) {
+  datasets <- lapply(types, function(type) {
+    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241031_ddm_data/", block, "/stats_", type, ".csv")
+    read.csv(file_path) %>%
+      select(all_of(column_mappings[[type]])) %>%
+      rename(!!paste0(type, "_ppt") := participant)
+  })
+  
+  # Merge all datasets by "participant_id"
+  Reduce(function(x, y) full_join(x, y, by = "participant_id"), datasets) %>%
+    mutate(visit = toupper(block), .after = participant_id)
+}
+
+# Column mappings for each DDM parameter type
+column_mappings_intc <- list(
+  v = c("participant_id", "v_intc", "participant"),
+  a = c("participant_id", "a_intc", "participant"),
+  t = c("participant_id", "t_intc", "participant"),
+  z = c("participant_id", "z_intc", "participant")
+)
+
+# Process only BL1 data
+types_intc <- names(column_mappings_intc)
+dat_ddm_bl1_intc <- process_data_intc("bl1", types_intc, column_mappings_intc)
+
+
+# Compute combined subject+group intercepts
+dat_ddm_bl1_intc <- dat_ddm_bl1_intc %>%
+  mutate(v_sum = v_intc + v_ppt, .after = v_ppt) %>%
+  mutate(a_sum = a_intc + a_ppt, .after = a_ppt) %>%
+  mutate(t_sum = t_intc + t_ppt, .after = t_ppt) %>%
+  mutate(z_sum = z_intc + z_ppt, .after = z_ppt)
+
+dat_ddm_bl1_intc <- dat_ddm_bl1_intc %>% 
+  rename(subj = participant_id) %>% 
+  select(c(subj, v_sum))
+dat_ddm_bl1_intc <- subset(dat_ddm_bl1_intc, subj %in% mri_sample_subjx$subj)
+dat_intc_comb <- merge(dat_ddm_bl1_intc, dat_dlPFC, by = c("subj"), all.x = TRUE)
+dat_intc_comb <- as.data.frame(dat_intc_comb)
+```
 
 ## analyze + plot DDM
 ```{r}
 # test group differences in drift rate
 ### BL1 DDM LMER
 dat_ddm_bl1_v <- filter(dat_ddm_bl1, parameter == "v")
+plot(density(dat_ddm_bl1_v$mean)) # bimodal distribution
 
-# don't need to use lmer because no repeated measures
-mod_v <- lm(mean ~ group * cttype, data = dat_ddm_bl1_v)
-check_model(mod_v)
-anova(mod_v)
+# # model not converging
+# mod_v <- lmer(mean ~ group * cttype + (1|subj), data = dat_ddm_bl1_v)
+# isSingular(mod_v) # needs random effect
+# 
+# # z scores - doesn't help model converge
+# hist(dat_ddm_bl1_v$mean)  # Check for extreme values
+# dat_ddm_bl1_v$mean_z <- scale(dat_ddm_bl1_v$mean)
+# mod_v_z <- lmer(mean_z ~ group * cttype + (1 | subj), data = dat_ddm_bl1_v)
+# 
+# # optimizer - doesn't help
+# mod_v <- lmer(mean ~ group * cttype + (1|subj), data = dat_ddm_bl1_v,
+#               control = lmerControl(optimizer = "bobyqa"))
+# 
+# # forced fixed effects - doesn't help
+# mod_FEsubj <- lm(mean ~ group * cttype + factor(subj), data = dat_ddm_bl1_v)
+# anova(mod_FEsubj)
+# 
+# # glmm - doesn't help
+# pacman::p_load(glmmTMB)
+# mod_tmb <- glmmTMB(mean ~ group * cttype + (1 | subj), data = dat_ddm_bl1_v)
+
+# report this because it includes interaction
+mod_v_fixed <- lm(mean ~ group * cttype, data = dat_ddm_bl1_v) 
+check_model(mod_v_fixed)
+Anova(mod_v_fixed, type = 3)
+print(emmeans(mod_v_fixed, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_v_fixed, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_v_fixed, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_v_fixed, list(pairwise ~ cttype|group), adjust = "mvt"))
+
+# dont report this but crossreference to validate above
+mod_v_simple <- lmer(mean ~ group + cttype + (1|subj), data = dat_ddm_bl1_v)
+check_model(mod_v_simple)
+Anova(mod_v_simple, type = 3)
+print(emmeans(mod_v_simple, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_v_simple, list(pairwise ~ group), adjust = "mvt"))
+
+# LMs separated by trial type
+dat_v_ax <- filter(dat_ddm_bl1_v, cttype == "AX")
+dat_v_ay <- filter(dat_ddm_bl1_v, cttype == "AY")
+dat_v_bx <- filter(dat_ddm_bl1_v, cttype == "BX")
+dat_v_by <- filter(dat_ddm_bl1_v, cttype == "BY")
+
+t.test(mean ~ group, dat_v_ax) #sig
+t.test(mean ~ group, dat_v_ay) #not sig
+t.test(mean ~ group, dat_v_bx) #sig
+t.test(mean ~ group, dat_v_by) #sig
 
 # descriptives - means by group 
 (v_desc <- dat_ddm_bl1_v %>%
   group_by(group, cttype) %>%
   summarise(mean = mean(mean)))
 
-# transform AY drift rate
+# transform AY drift rate for plotting
 dat_ddm_bl1_v_Abs <- dat_ddm_bl1_v %>%
   mutate(mean = if_else(cttype == "AY", -1 * mean, mean))
 
@@ -220,7 +307,7 @@ v_plot <- ggplot(dat_ddm_bl1_v_Abs,
   stat_summary(fun.data = mean_se, geom = "errorbar",
                aes(color = group), width = 0.2, linewidth = 1,
                position = position_dodge(width = 0.3)) + 
-  labs(title = "TOPX Drift Rates", y = "Drift Rate (v)",
+  labs(title = "TOPX Drift Rates", y = "Drift Rate",
        x = "Trial Type", color = "Group") +
   coord_cartesian(ylim = c(0.5, 3.2)) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
@@ -269,11 +356,16 @@ anova(mod_err, type = 3) # trial significant, group and interaction not
 # anova(mod_err) # closer to significant, but not appropriate - need random effect
 # tried t-test but not significant - ugh this sample is so small!
 dat_topx_bx <- filter(dat_topx, dat_topx$cttype == "BX")
-t.test(error ~ group, dat_topx_bx)
+t.test(error ~ group, dat_topx_bx) # but not parametric!
+wilcox.test(error ~ group, data = dat_topx_bx, exact = FALSE)
+print(emmeans(mod_err, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_err, list(pairwise ~ group), adjust = "mvt"))
 
 ### BL1 RT LMER
 mod_rt <- lmer(rt_mdn ~ group * cttype + (1|subj), data = dat_topx)
 anova(mod_rt, type = 3) # trial singificant, group and interaction trending
+print(emmeans(mod_rt, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_rt, list(pairwise ~ group), adjust = "mvt"))
 
 # descriptives - means by group 
 (topx_desc <- 
@@ -311,10 +403,10 @@ plot_err_bl1 <- ggplot(dat_topx,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_err_bl1
-# ggsave(paste0("graphs/", 
-#               format(Sys.Date(), "%Y%m%d"),
-#               "_dlpfc_error_bl1.png"),
-#        plot_err_bl1, width = 6, height = 4)
+ggsave(paste0("graphs/",
+              format(Sys.Date(), "%Y%m%d"),
+              "_dlpfc_error_bl1.png"),
+       plot_err_bl1, width = 6, height = 4)
 
 # plot rt BL1
 plot_rt_bl1 <- ggplot(dat_topx, 
@@ -343,10 +435,10 @@ plot_rt_bl1 <- ggplot(dat_topx,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 plot_rt_bl1
-# ggsave(paste0("graphs/", 
-#               format(Sys.Date(), "%Y%m%d"),
-#               "_dlpfc_rt_bl1.png"),
-#        plot_rt_bl1, width = 6, height = 4)
+ggsave(paste0("graphs/",
+              format(Sys.Date(), "%Y%m%d"),
+              "_dlpfc_rt_bl1.png"),
+       plot_rt_bl1, width = 6, height = 4)
 ```
 
 # demographics
@@ -513,7 +605,6 @@ table_ct_pct_2split("dx_5split")
 chisq.test(dat_demo$gender, dat_demo$group)
 fisher.test(dat_demo$gender, dat_demo$group)
 
-
 # age
 # welch's two-sample t-test - report this
 t.test(age ~ status_ppt_type, data = dat_demo)
@@ -533,7 +624,8 @@ fisher.test(dat_demo$race, dat_demo$group)
 chisq.test(dat_demo$hispanic, dat_demo$group)
 ```
 
-# analyses
+# main analyses
+## group diff in neural activation
 ```{r}
 t.test(dlPFC_sum ~ group, dat_dlPFC)
 t.test(ContA_sum ~ group, dat_dlPFC)
@@ -609,7 +701,7 @@ y_max <- dat_dlPFC_summary %>%
   max() * 1.2  # add 20% space for stars
 ```
 
-# analyze and plot dlPFC
+### plot neural activation
 ```{r}
 # Plot with error bars
 plot_dlPFC <- ggplot(dat_dlPFC_summary, aes(x = ControlRegion, y = MeanValue, fill = group)) +
@@ -622,8 +714,8 @@ plot_dlPFC <- ggplot(dat_dlPFC_summary, aes(x = ControlRegion, y = MeanValue, fi
   #           aes(x = ControlRegion, y = y, label = sig_label),
   #           inherit.aes = FALSE,
   #           size = 8, fontface = "bold") +
-  labs(title = "dlPFC Activation during B>A", x = "Schaefer Network", 
-       y = "Mean Activation", fill = "Group") +
+  labs(title = "Neural Activation during B>A", x = "Schaefer Network", 
+       y = "Activation (mean Z)", fill = "Group") +
   scale_fill_manual(values = c("Patient" = "#AA8829", "Control" = "#2C737F"),
                     labels = c("Control" = "Ctl", "Patient" = "EP")) +
   #coord_cartesian(ylim = c(0, y_max)) +
@@ -633,11 +725,11 @@ plot_dlPFC <- ggplot(dat_dlPFC_summary, aes(x = ControlRegion, y = MeanValue, fi
         panel.grid.minor = element_blank(),
         panel.background = element_blank(), 
         axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face = "bold", size = 16),
-        axis.title = element_text(face = "bold", size = 20),
-        legend.text = element_text(face = "bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.text = element_text(face = "bold", size = 12),
+        axis.title = element_text(face = "bold", size = 16),
+        legend.text = element_text(face = "bold", size = 12),
+        legend.title = element_text(face = "bold", size = 14),
+        plot.title = element_text(face = "bold", size = 20))
 plot_dlPFC
 ggsave(paste0("graphs/",
               format(Sys.Date(), "%Y%m%d"),
@@ -645,15 +737,23 @@ ggsave(paste0("graphs/",
        plot_dlPFC, width = 6, height = 4)
 ```
 
-
+## sum of control networks
+### LMER of all trials
 ```{r}
 dat_v_comb <- merge(dat_ddm_bl1_v, dat_dlPFC, by = c("subj", "visit", "group"), all.x = TRUE)
 
 # run LMER with all cttypes
-# mod_all <- lmer(mean ~ dlPFC_sum * cttype * group + (1|subj), data = dat_comb) # not fitting
-# mod_all <- lmer(mean ~ dlPFC_sum * cttype + group + (1|subj), data = dat_comb) # nonsig int
-# mod_all <- lmer(mean ~ dlPFC_sum + cttype + group + (1|subj), data = dat_comb) # need group int for interpretation
-mod_all <- lmer(mean ~ dlPFC_sum * group + cttype + (1|subj), data = dat_v_comb) # nonsig int
+# mod_all <- lmer(mean ~ dlPFC_sum * group * cttype + (1|subj), 
+#                 data = dat_v_comb) # model not converging
+mod_all_fixed <- lm(mean ~ dlPFC_sum * group * cttype,
+                data = dat_v_comb)
+check_model(mod_all_fixed)
+car::Anova(mod_all_fixed, type = 3)
+summary(mod_all_fixed)
+
+mod_all <- lmer(mean ~ dlPFC_sum * group + cttype + (1|subj), 
+                data = dat_v_comb) # nonsig int
+check_model(mod_all)
 anova(mod_all, type = 3)
 summary(mod_all)
 # posthocs
@@ -661,7 +761,10 @@ print(emtrends(mod_all, pairwise ~ group, var = "dlPFC_sum")) # group by dlPFC
 #print(emmeans(mod_all, list(pairwise ~ dlPFC), adjust = "mvt")) # v by trial type
 print(emmeans(mod_all, list(pairwise ~ cttype), adjust = "mvt")) # v by trial type
 print(emmeans(mod_all, list(pairwise ~ group), adjust = "mvt")) # v by group
+```
 
+### LMs by trials
+```{r}
 # LMs separated by trial type
 dat_comb_ax <- filter(dat_v_comb, cttype == "AX")
 dat_comb_ay <- filter(dat_v_comb, cttype == "AY")
@@ -669,19 +772,90 @@ dat_comb_bx <- filter(dat_v_comb, cttype == "BX")
 dat_comb_by <- filter(dat_v_comb, cttype == "BY")
 
 mod_ax <- lm(mean ~ dlPFC_sum * group, data = dat_comb_ax)
-anova(mod_ax)
+Anova(mod_ax, type = 3)
 print(emmeans(mod_ax, list(pairwise ~ group), adjust = "mvt"))
 print(emtrends(mod_ax, pairwise ~ group, var = "dlPFC_sum"))
 cor.test(dat_comb_ax$mean, dat_comb_ax$dlPFC)
+plot(dat_comb_ax$mean, dat_comb_ax$dlPFC)
+```
+
+## control A network
+```{r}
+# run lm of v intercepts - in case it changes the significance of contA
+mod_ctlA_intc <- lm(v_sum ~ ContA_sum * group, data = dat_intc_comb)
+check_model(mod_ctlA_intc)
+car::Anova(mod_ctlA_intc, type = 3)
+summary(mod_ctlA_intc)
+# doesn't really do anything, too complicated to go to intercepts
+
+# shouldnt report this bc doesnt account for repeated measures
+mod_ctlA_fixed <- lm(mean ~ ContA_sum * group * cttype, data = dat_v_comb)
+check_model(mod_ctlA_fixed)
+car::Anova(mod_ctlA_fixed, type = 3)
+summary(mod_ctlA_fixed)
+
+# report this
+mod_ctlA <- lmer(mean ~ ContA_sum * group + cttype + (1|subj), 
+                data = dat_v_comb) # nonsig int
+check_model(mod_ctlA)
+anova(mod_ctlA, type = 3)
+summary(mod_ctlA)
+# posthocs
+print(emtrends(mod_ctlA, pairwise ~ group, var = "dlPFC_sum")) # group by dlPFC
+#print(emmeans(mod_ctlA, list(pairwise ~ dlPFC_sum), adjust = "mvt")) # v by trial type
+print(emmeans(mod_ctlA, list(pairwise ~ cttype), adjust = "mvt")) # v by trial type
+print(emmeans(mod_ctlA, list(pairwise ~ group), adjust = "mvt")) # v by group
+```
+
+# plot dlPFC and BX drift
+```{r}
+# bx correlation - most hypothesis driven
+shapiro.test(dat_comb_bx$mean) #ok
+shapiro.test(dat_comb_bx$dlPFC_sum) #ok
+# across all ppts
+cor.test(dat_comb_bx$mean, dat_comb_bx$dlPFC_sum)
+cor.test(dat_comb_bx$mean, dat_comb_bx$ContA_sum)
+# by group
+dat_comb_bx %>%
+  group_split(group) %>%
+  map(~ cor.test(.x$mean, .x$ContA_sum))
+
+
+
+# Styled scatterplot of mean vs dlPFC
+plot_cor_bl1 <- ggplot(dat_comb_bx, aes(x = ContA_sum, y = mean, color = group)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.5) +
+  labs(title = "dlPFC Activation and BX Drift Rate",
+       x = "Control A Network Activation", y = "Drift Rate of BX Trials", color = "Group") +
+  scale_color_manual(values = c("#2C737F", "#AA8829"),
+                     labels = c("Ctl", "EP")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face = "bold", size = 12),
+        axis.title = element_text(face = "bold", size = 16),
+        legend.text = element_text(face = "bold", size = 12),
+        legend.title = element_text(face = "bold", size = 14),
+        plot.title = element_text(face = "bold", size = 20))
+plot_cor_bl1
+ggsave(paste0("graphs/",
+              format(Sys.Date(), "%Y%m%d"),
+              "_dlpfc_drift_cor_bl1_flip.png"),
+       plot_cor_bl1, width = 6, height = 4)
 
 mod_ay <- lm(mean ~ dlPFC_sum * group, data = dat_comb_ay)
-anova(mod_ay)
+Anova(mod_ay, type = 3)
+cor.test(dat_comb_ay$mean, dat_comb_ay$dlPFC)
 
 mod_bx <- lm(mean ~ dlPFC_sum * group, data = dat_comb_bx)
-anova(mod_bx)
+Anova(mod_bx, type = 3)
+cor.test(dat_comb_bx$mean, dat_comb_bx$dlPFC)
 
 mod_by <- lm(mean ~ dlPFC_sum * group, data = dat_comb_by)
-anova(mod_by)
+Anova(mod_by, type = 3)
+cor.test(dat_comb_by$mean, dat_comb_by$dlPFC)
 
 # patients only
 dat_comb_ax_pt <- filter(dat_comb_ax, group == "Patient")
