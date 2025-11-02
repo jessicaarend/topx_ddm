@@ -107,6 +107,10 @@ dat_dlPFC <- dat_dlPFC %>%
          ContC_sum = rowSums(select(., contains("ContC")), na.rm = TRUE),
          ContC_LH_sum = rowSums(select(., contains("LH_ContC")), na.rm = TRUE),
          ContC_RH_sum = rowSums(select(., contains("RH_ContC")), na.rm = TRUE),
+         dlPFC_mean = dlPFC_sum/61,
+         ContA_mean = ContA_sum/24,
+         ContB_mean = ContB_sum/25,
+         ContC_mean = ContC_sum/12
          )
 
 dat_dlPFC_lh <- dat_dlPFC %>%
@@ -628,9 +632,17 @@ chisq.test(dat_demo$hispanic, dat_demo$group)
 ## group diff in neural activation
 ```{r}
 t.test(dlPFC_sum ~ group, dat_dlPFC)
+t.test(dlPFC_mean ~ group, dat_dlPFC)
+
 t.test(ContA_sum ~ group, dat_dlPFC)
+t.test(ContA_mean ~ group, dat_dlPFC)
+
 t.test(ContB_sum ~ group, dat_dlPFC)
+t.test(ContB_mean ~ group, dat_dlPFC)
+
 t.test(ContC_sum ~ group, dat_dlPFC)
+t.test(ContC_mean ~ group, dat_dlPFC)
+
 
 # descriptives - means by group 
 dat_dlPFC %>%
@@ -651,8 +663,24 @@ dat_dlPFC_long <- dat_dlPFC %>%
                names_to = "ControlRegion", 
                values_to = "Value")
 
+# Reshape to long format
+dat_dlPFC_long_v2 <- dat_dlPFC %>%
+  select(group, ContA_mean, ContB_mean, ContC_mean) %>%
+  pivot_longer(cols = starts_with("Cont"), 
+               names_to = "ControlRegion", 
+               values_to = "Value")
+
 # Summarize mean and SE
 dat_dlPFC_summary <- dat_dlPFC_long %>%
+  group_by(group, ControlRegion) %>%
+  summarise(
+    MeanValue = mean(Value, na.rm = TRUE),
+    SE = se(Value),
+    .groups = 'drop'
+  )
+
+# Summarize mean and SE
+dat_dlPFC_summary_v2 <- dat_dlPFC_long_v2 %>%
   group_by(group, ControlRegion) %>%
   summarise(
     MeanValue = mean(Value, na.rm = TRUE),
@@ -701,6 +729,99 @@ y_max <- dat_dlPFC_summary %>%
   max() * 1.2  # add 20% space for stars
 ```
 
+
+```{r}
+# Reshape to long format
+dat_dlPFC_long_v2 <- dat_dlPFC %>%
+  select(group, ContA_mean, ContB_mean, ContC_mean) %>%
+  pivot_longer(cols = starts_with("Cont"), 
+               names_to = "ControlRegion", 
+               values_to = "Value")
+
+# Summarize mean and SE
+dat_dlPFC_summary_v2 <- dat_dlPFC_long_v2 %>%
+  group_by(group, ControlRegion) %>%
+  summarise(
+    MeanValue = mean(Value, na.rm = TRUE),
+    SE = se(Value),
+    .groups = 'drop'
+  )
+
+# try to add asterisks
+# t-tests: EP vs. HC per region
+p_vals <- dat_dlPFC_long_v2 %>%
+  group_by(ControlRegion) %>%
+  summarise(p = t.test(Value ~ group)$p.value)
+
+# assign significance labels
+p_vals <- p_vals %>%
+  mutate(sig_label = case_when(
+    p < 0.001 ~ "***",
+    p < 0.01 ~ "**",
+    p < 0.05 ~ "*",
+    TRUE ~ "ns"
+  ))
+
+# for label placement above error bars
+sig_labels <- dat_dlPFC_summary_v2 %>%
+  group_by(ControlRegion) %>%
+  summarise(y = max(MeanValue + SE) * 1.1, .groups = "drop") %>%
+  left_join(p_vals, by = "ControlRegion")
+
+# Relabel x-axis values
+# Step 4: relabel both summary and sig_labels
+new_levels <- c("ContA_mean", "ContB_mean", "ContC_mean")
+new_labels <- c("Control A", "Control B", "Control C")
+
+dat_dlPFC_summary_v2$ControlRegion <- factor(dat_dlPFC_summary_v2$ControlRegion,
+                                         levels = new_levels,
+                                         labels = new_labels)
+
+sig_labels$ControlRegion <- factor(sig_labels$ControlRegion,
+                                   levels = new_levels,
+                                   labels = new_labels)
+
+# set max y value
+y_max_v2 <- dat_dlPFC_summary_v2 %>%
+  mutate(upper = MeanValue + SE) %>%
+  pull(upper) %>%
+  max() * 1.2  # add 20% space for stars
+
+
+# Plot with error bars
+plot_dlPFC_v2 <- ggplot(dat_dlPFC_summary_v2, aes(x = ControlRegion, y = MeanValue, fill = group)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.6) +
+  geom_errorbar(aes(ymin = MeanValue - SE, ymax = MeanValue + SE),
+                width = 0.2,
+                linewidth = .5,
+                position = position_dodge(width = 0.7)) +
+  # geom_text(data = sig_labels,
+  #           aes(x = ControlRegion, y = y, label = sig_label),
+  #           inherit.aes = FALSE,
+  #           size = 8, fontface = "bold") +
+  labs(title = "BOLD Activation during B>A", x = "Schaefer-Yeo Network", 
+       y = "Activation (mean Z)", fill = "Group") +
+  scale_fill_manual(values = c("Patient" = "#AA8829", "Control" = "#2C737F"),
+                    labels = c("Control" = "Ctl", "Patient" = "EP")) +
+  #coord_cartesian(ylim = c(0, y_max)) +
+  coord_cartesian(ylim = c(0, 1.5)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(face = "bold", size = 12),
+        axis.title = element_text(face = "bold", size = 16),
+        legend.text = element_text(face = "bold", size = 12),
+        legend.title = element_text(face = "bold", size = 14),
+        plot.title = element_text(face = "bold", size = 20))
+plot_dlPFC_v2
+ggsave(paste0("graphs/",
+              format(Sys.Date(), "%Y%m%d"),
+              "_dlpfc_activation_bl1_mean.png"),
+       plot_dlPFC_v2, width = 6, height = 4)
+```
+
 ### plot neural activation
 ```{r}
 # Plot with error bars
@@ -714,7 +835,7 @@ plot_dlPFC <- ggplot(dat_dlPFC_summary, aes(x = ControlRegion, y = MeanValue, fi
   #           aes(x = ControlRegion, y = y, label = sig_label),
   #           inherit.aes = FALSE,
   #           size = 8, fontface = "bold") +
-  labs(title = "Neural Activation during B>A", x = "Schaefer Network", 
+  labs(title = "BOLD Activation during B>A", x = "Schaefer-Yeo Network", 
        y = "Activation (mean Z)", fill = "Group") +
   scale_fill_manual(values = c("Patient" = "#AA8829", "Control" = "#2C737F"),
                     labels = c("Control" = "Ctl", "Patient" = "EP")) +
@@ -750,6 +871,32 @@ mod_all_fixed <- lm(mean ~ dlPFC_sum * group * cttype,
 check_model(mod_all_fixed)
 car::Anova(mod_all_fixed, type = 3)
 summary(mod_all_fixed)
+
+mod_all <- lmer(mean ~ dlPFC_sum * group + cttype + (1|subj), 
+                data = dat_v_comb) # nonsig int
+check_model(mod_all)
+anova(mod_all, type = 3)
+summary(mod_all)
+# posthocs
+print(emtrends(mod_all, pairwise ~ group, var = "dlPFC_sum")) # group by dlPFC
+#print(emmeans(mod_all, list(pairwise ~ dlPFC), adjust = "mvt")) # v by trial type
+print(emmeans(mod_all, list(pairwise ~ cttype), adjust = "mvt")) # v by trial type
+print(emmeans(mod_all, list(pairwise ~ group), adjust = "mvt")) # v by group
+```
+
+
+# v2 with means
+```{r}
+dat_v_comb <- merge(dat_ddm_bl1_v, dat_dlPFC, by = c("subj", "visit", "group"), all.x = TRUE)
+
+# run LMER with all cttypes
+# mod_all <- lmer(mean ~ dlPFC_sum * group * cttype + (1|subj), 
+#                 data = dat_v_comb) # model not converging
+mod_all_fixed_v2 <- lm(mean ~ dlPFC_mean * group * cttype,
+                data = dat_v_comb)
+check_model(mod_all_fixed_v2)
+car::Anova(mod_all_fixed_v2, type = 3)
+summary(mod_all_fixed_v2)
 
 mod_all <- lmer(mean ~ dlPFC_sum * group + cttype + (1|subj), 
                 data = dat_v_comb) # nonsig int
@@ -807,6 +954,36 @@ print(emmeans(mod_ctlA, list(pairwise ~ cttype), adjust = "mvt")) # v by trial t
 print(emmeans(mod_ctlA, list(pairwise ~ group), adjust = "mvt")) # v by group
 ```
 
+# v2
+```{r}
+# run lm of v intercepts - in case it changes the significance of contA
+mod_ctlA_intc <- lm(v_sum ~ ContA_mean * group, data = dat_intc_comb)
+check_model(mod_ctlA_intc)
+car::Anova(mod_ctlA_intc, type = 3)
+summary(mod_ctlA_intc)
+# doesn't really do anything, too complicated to go to intercepts
+
+# shouldnt report this bc doesnt account for repeated measures
+mod_ctlA_fixed <- lm(mean ~ ContA_mean * group * cttype, data = dat_v_comb)
+check_model(mod_ctlA_fixed)
+car::Anova(mod_ctlA_fixed, type = 3)
+summary(mod_ctlA_fixed)
+
+# report this
+mod_ctlA <- lmer(mean ~ ContA_sum * group + cttype + (1|subj), 
+                data = dat_v_comb) # nonsig int
+mod_ctlA <- lmer(mean ~ ContA_mean * group + cttype + (1|subj), 
+                data = dat_v_comb) # nonsig int
+check_model(mod_ctlA)
+anova(mod_ctlA, type = 3)
+summary(mod_ctlA)
+# posthocs
+print(emtrends(mod_ctlA, pairwise ~ group, var = "dlPFC_sum")) # group by dlPFC
+#print(emmeans(mod_ctlA, list(pairwise ~ dlPFC_sum), adjust = "mvt")) # v by trial type
+print(emmeans(mod_ctlA, list(pairwise ~ cttype), adjust = "mvt")) # v by trial type
+print(emmeans(mod_ctlA, list(pairwise ~ group), adjust = "mvt")) # v by group
+```
+
 # plot dlPFC and BX drift
 ```{r}
 # bx correlation - most hypothesis driven
@@ -826,7 +1003,7 @@ dat_comb_bx %>%
 plot_cor_bl1 <- ggplot(dat_comb_bx, aes(x = ContA_sum, y = mean, color = group)) +
   geom_point(size = 3, alpha = 0.8) +
   geom_smooth(method = "lm", se = FALSE, linewidth = 1.5) +
-  labs(title = "dlPFC Activation and BX Drift Rate",
+  labs(title = "Control A Activation and BX Drift Rate",
        x = "Control A Network Activation", y = "Drift Rate of BX Trials", color = "Group") +
   scale_color_manual(values = c("#2C737F", "#AA8829"),
                      labels = c("Ctl", "EP")) +
@@ -844,6 +1021,30 @@ ggsave(paste0("graphs/",
               format(Sys.Date(), "%Y%m%d"),
               "_dlpfc_drift_cor_bl1_flip.png"),
        plot_cor_bl1, width = 6, height = 4)
+
+
+# Styled scatterplot of mean vs dlPFC
+plot_cor_bl1_v2 <- ggplot(dat_comb_bx, aes(x = ContA_mean, y = mean, color = group)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.5) +
+  labs(title = "Control A Network and BX Drift Rate",
+       x = "Control A Network Activation (mean Z)", y = "Drift Rate of BX Trials", color = "Group") +
+  scale_color_manual(values = c("#2C737F", "#AA8829"),
+                     labels = c("Ctl", "EP")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face = "bold", size = 12),
+        axis.title = element_text(face = "bold", size = 16),
+        legend.text = element_text(face = "bold", size = 12),
+        legend.title = element_text(face = "bold", size = 14),
+        plot.title = element_text(face = "bold", size = 20))
+plot_cor_bl1_v2
+ggsave(paste0("graphs/",
+              format(Sys.Date(), "%Y%m%d"),
+              "_dlpfc_drift_cor_bl1_flip_mean.png"),
+       plot_cor_bl1_v2, width = 6, height = 4)
 
 mod_ay <- lm(mean ~ dlPFC_sum * group, data = dat_comb_ay)
 Anova(mod_ay, type = 3)

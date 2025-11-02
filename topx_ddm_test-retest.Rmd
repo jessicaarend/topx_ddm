@@ -13,7 +13,7 @@ output:
 rm(list=ls())
 
 # read in packages
-pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych)
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, lme4, emmeans, lmerTest, Matrix, pbkrtest, psych, patchwork)
 ```
 
 # Read/reformat TOPX data
@@ -193,6 +193,63 @@ icc_table_topx_err$ctl_upCI <- round(icc_table_topx_err$ctl_upCI, 2)
 print(icc_table_topx_err)
 ```
 
+###Plot: TOPX Error
+```{r}
+# Reshape into long format and drop "All"
+icc_table_err_plot <- icc_table_topx_err %>%
+  select(trial_type,
+         All_icc = all_icc, All_low = all_lowCI, All_up = all_upCI,
+         Pt_icc  = pt_icc,  Pt_low  = pt_lowCI,  Pt_up  = pt_upCI,
+         Ctl_icc = ctl_icc, Ctl_low = ctl_lowCI, Ctl_up = ctl_upCI) %>%
+  pivot_longer(
+    cols = -trial_type,
+    names_to = c("Group", ".value"),
+    names_pattern = "(All|Pt|Ctl)_(icc|low|up)"
+  ) %>%
+  filter(Group != "All") %>%  # drop the "All" group
+  mutate(
+    icc_label = round(icc, 2),
+    ci_label  = paste0("[", round(low, 2), ", ", round(up, 2), "]"),
+    # reverse row order manually
+    trial_type = factor(trial_type, levels = rev(c("AX", "AY", "BX", "BY"))),
+    # set text color based on ICC
+    text_col = ifelse(!is.na(icc) & icc > 0.35, "white", "black"),
+    # order Pt first
+    Group = recode(Group, Pt = "EP"),
+    Group = factor(Group, levels = c("EP", "Ctl"))
+  )
+
+# Plot heatmap with reversed row order
+err_plot <- ggplot(icc_table_err_plot, aes(x = Group, y = trial_type, fill = icc)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = icc_label, color = text_col), size = 5, fontface = "bold", vjust = -0.2) +
+  geom_text(aes(label = ci_label, color = text_col), size = 3.5, vjust = 1.2) +
+  scale_fill_gradient(low = "white", high = "#610014",
+                      limits = c(0, 1), name = "ICC") +
+  scale_color_identity() +  # use the text_col values directly
+  scale_x_discrete(position = "top") +
+  theme_minimal(base_size = 14) +
+  labs(x = "", y = "",
+       title = "Error Rates") +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(face = "bold", size = 14),
+        axis.title.y = element_text(face = "bold", size = 14), 
+        plot.title = element_text(face = "bold", size = 14, 
+                                  hjust = 0.5,
+                                  margin = margin(t = 0, r = 0, b = 5, l = 0)))
+
+# Save figure
+ggsave(
+  filename = paste0("~/Documents/umn_work/topx_analyses/topx_ddm/graphs/test-retest/", 
+                    format(Sys.Date(), "%Y%m%d"), "_TOPX_err_ICC.png"),
+  plot = err_plot,
+  bg = "white",
+  width = 4.5,   # width in inches
+  height = 3.5,  # height in inches
+  dpi = 300    # high-resolution
+)
+```
 
 ## TOPX RT: ICC
 ```{r}
@@ -271,6 +328,63 @@ icc_table_topx_rt$ctl_upCI <- round(icc_table_topx_rt$ctl_upCI, 2)
 print(icc_table_topx_rt)
 ```
 
+###Plot: TOPX RT
+```{r}
+# Reshape into long format and drop "All" (Reaction Times)
+icc_table_rt_plot <- icc_table_topx_rt %>%
+  select(trial_type,
+         All_icc = all_icc, All_low = all_lowCI, All_up = all_upCI,
+         Pt_icc  = pt_icc,  Pt_low  = pt_lowCI,  Pt_up  = pt_upCI,
+         Ctl_icc = ctl_icc, Ctl_low = ctl_lowCI, Ctl_up = ctl_upCI) %>%
+  pivot_longer(
+    cols = -trial_type,
+    names_to = c("Group", ".value"),
+    names_pattern = "(All|Pt|Ctl)_(icc|low|up)"
+  ) %>%
+  filter(Group != "All") %>%  # drop the "All" group
+  mutate(
+    icc_label = round(icc, 2),
+    ci_label  = paste0("[", round(low, 2), ", ", round(up, 2), "]"),
+    # reverse row order manually
+    trial_type = factor(trial_type, levels = rev(c("AX", "AY", "BX", "BY"))),
+    # set text color based on ICC
+    text_col = ifelse(!is.na(icc) & icc > 0.35, "white", "black"),
+    # rename Pt -> EP and order first
+    Group = recode(Group, Pt = "EP"),
+    Group = factor(Group, levels = c("EP", "Ctl"))
+  )
+
+# Plot heatmap with reversed row order
+rt_plot <- ggplot(icc_table_rt_plot, aes(x = Group, y = trial_type, fill = icc)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = icc_label, color = text_col), size = 5, fontface = "bold", vjust = -0.2) +
+  geom_text(aes(label = ci_label, color = text_col), size = 3.5, vjust = 1.2) +
+  scale_fill_gradient(low = "white", high = "#610014",
+                      limits = c(0, 1), name = "ICC") +
+  scale_color_identity() +
+  scale_x_discrete(position = "top") +
+  theme_minimal(base_size = 14) +
+  labs(x = "", y = "",
+       title = "Reaction Times") +  # updated title for RTs
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(face = "bold", size = 14),
+        axis.title.y = element_text(face = "bold", size = 14), 
+        plot.title = element_text(face = "bold", size = 14, 
+                                  hjust = 0.5,
+                                  margin = margin(t = 0, r = 0, b = 5, l = 0)))
+
+# Save figure
+ggsave(
+  filename = paste0("~/Documents/umn_work/topx_analyses/topx_ddm/graphs/test-retest/", 
+                    format(Sys.Date(), "%Y%m%d"), "_TOPX_RT_ICC.png"),
+  plot = rt_plot,
+  bg = "white",
+  width = 4.5,   # width in inches
+  height = 3.5,  # height in inches
+  dpi = 300    # high-resolution
+)
+```
 
 ## TOPX d' ICC
 ```{r}
@@ -343,6 +457,67 @@ icc_table_topx_d$ctl_upCI <- round(icc_table_topx_d$ctl_upCI, 2)
 # Print the data frame to verify
 print(icc_table_topx_d)
 ```
+
+###Plot: TOPX d'
+```{r}
+# Reshape into long format and drop "All"
+icc_table_d_plot <- icc_table_topx_d %>%
+  select(d_type,
+         All_icc = all_icc, All_low = all_lowCI, All_up = all_upCI,
+         Pt_icc  = pt_icc,  Pt_low  = pt_lowCI,  Pt_up  = pt_upCI,
+         Ctl_icc = ctl_icc, Ctl_low = ctl_lowCI, Ctl_up = ctl_upCI) %>%
+  pivot_longer(
+    cols = -d_type,
+    names_to = c("Group", ".value"),
+    names_pattern = "(All|Pt|Ctl)_(icc|low|up)"
+  ) %>%
+  filter(Group != "All") %>%  # drop "All" column
+  mutate(
+    icc_label = round(icc, 2),
+    ci_label  = paste0("[", round(low, 2), ", ", round(up, 2), "]"),
+    # factor for y-axis (two rows: d_context, d_expect)
+    d_type = recode(d_type, d_context = "d' context", d_expect = "d' expectancy"),
+    d_type = factor(d_type, levels = rev(c("d' context", "d' expectancy"))),
+    # set text color based on ICC
+    text_col = ifelse(!is.na(icc) & icc > 0.35, "white", "black"),
+    # rename Pt -> EP and order first
+    Group = recode(Group, Pt = "EP"),
+    Group = factor(Group, levels = c("EP", "Ctl"))
+  )
+
+# Plot heatmap
+d_plot <- ggplot(icc_table_d_plot, aes(x = Group, y = d_type, fill = icc)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = icc_label, color = text_col), size = 5, fontface = "bold", vjust = -0.2) +
+  geom_text(aes(label = ci_label, color = text_col), size = 3.5, vjust = 1.2) +
+  scale_fill_gradient(low = "white", high = "#610014",
+                      limits = c(0, 1), name = "ICC") +
+  scale_color_identity() +
+  scale_x_discrete(position = "top") +
+  labs(x = "", y = "",
+       title = "D-prime Statistics") +
+  theme_minimal(base_size = 14) +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(face = "bold", size = 14),
+        axis.text.y = element_text(face = "bold", size = 14),
+        axis.title.y = element_text(face = "bold", size = 14), 
+        plot.title = element_text(face = "bold", size = 14, 
+                                  hjust = 0.5,
+                                  margin = margin(t = 0, r = 0, b = 5, l = 0)))
+
+# Save figure
+ggsave(
+  filename = paste0("~/Documents/umn_work/topx_analyses/topx_ddm/graphs/test-retest/", 
+                    format(Sys.Date(), "%Y%m%d"), "_TOPX_dprime_ICC.png"),
+  plot = d_plot,
+  bg = "white",
+  width = 5,   # width in inches
+  height = 2.5,  # height in inches
+  dpi = 300    # high-resolution
+)
+
+```
+
 
 # Read/reformat DDM data
 ```{r}
@@ -683,3 +858,158 @@ icc_table$ctl_upCI <- round(icc_table$ctl_upCI, 2)
 # Print the data frame to verify
 print(icc_table)
 ```
+
+
+### Plot: DDM icc 1x1
+```{r}
+# Reshape into long format for DDM ICCs
+# Combine parameter + cttype to make full variable names
+icc_table_ddm_plot <- icc_table %>%
+  mutate(var_label = case_when(
+    parameter %in% c("v","a","t") ~ paste0(parameter, "_", cttype),
+    parameter == "z" ~ paste0(parameter, "_", cttype)
+  )) %>%
+  select(var_label,
+         All_icc = all_icc, All_low = all_lowCI, All_up = all_upCI,
+         Pt_icc  = pt_icc,  Pt_low  = pt_lowCI,  Pt_up = pt_upCI,
+         Ctl_icc = ctl_icc, Ctl_low = ctl_lowCI, Ctl_up = ctl_upCI) %>%
+  pivot_longer(
+    cols = -var_label,
+    names_to = c("Group", ".value"),
+    names_pattern = "(All|Pt|Ctl)_(icc|low|up)"
+  ) %>%
+  mutate(
+    icc_label = round(icc, 2),
+    ci_label  = paste0("(", round(low, 2), "–", round(up, 2), ")"),
+    var_label = factor(var_label, levels = rev(c("v_AX","v_AY","v_BX","v_BY",
+                                                 "a_AX","a_AY","a_BX","a_BY",
+                                                 "t_AX","t_AY","t_BX","t_BY",
+                                                 "z_A","z_B")))
+  )
+
+# Add a column for text color based on icc
+icc_table_ddm_plot <- icc_table_ddm_plot %>%
+  mutate(text_col = ifelse(icc > 0.2, "white", "gray22"))
+
+# Plot heatmap for DDM ICCs
+ddm_plot <- ggplot(icc_table_ddm_plot, aes(x = Group, y = var_label, fill = icc)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = icc_label, color = text_col), size = 5, fontface = "bold", vjust = -0.35) +
+  geom_text(aes(label = ci_label, color = text_col), size = 3.3, vjust = 0.9) +
+  scale_fill_gradient(low = "white", high = "darkblue", limits = c(-0.1, 1), name = "ICC") +
+  scale_color_identity() +   # use the text_col values directly
+  scale_x_discrete(position = "top") +
+  theme_minimal(base_size = 14) +
+  labs(x = "", y = "", title = "DDM Parameter ICCs (95% CIs)") +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(face = "bold"),
+        axis.text.y = element_text(face = "bold"))
+
+# Save the heatmap as PNG with white background
+ggsave(
+  filename = paste0("~/Documents/umn_work/topx_analyses/topx_ddm/graphs/test-retest/", 
+                    format(Sys.Date(), "%Y%m%d"), "_DDM_ICC.png"),
+  plot = ddm_plot,
+  bg = "white",
+  width = 8,
+  height = 10,
+  dpi = 300
+)
+```
+
+###Plot: DDM icc 2x2
+```{r}
+# --- Reshape ICC table ---
+icc_table_ddm_long <- icc_table %>%
+  pivot_longer(
+    cols = c(pt_icc, ctl_icc, all_icc,
+             pt_lowCI, ctl_lowCI, all_lowCI,
+             pt_upCI, ctl_upCI, all_upCI),
+    names_to = c("Group", ".value"),
+    names_pattern = "(pt|ctl|all)_(icc|lowCI|upCI)"
+  )
+
+# --- Clean table ---
+icc_table_ddm_plot <- icc_table_ddm_long %>%
+  # drop "all"
+  filter(Group != "all") %>%
+  # Pt first, then Ctl
+  mutate(Group = factor(Group, levels = c("pt", "ctl"),
+                        labels = c("EP", "Ctl"))) %>%
+  # formatted labels for plotting
+  mutate(
+    icc_label = ifelse(is.na(icc), "", sprintf("%.2f", icc)),
+    ci_label  = ifelse(is.na(lowCI) | is.na(upCI), "",
+                       paste0("[", sprintf("%.2f", lowCI), ", ", sprintf("%.2f", upCI), "]")),
+    text_col  = ifelse(!is.na(icc) & icc > 0.35, "white", "black")
+  )
+
+# --- Titles for each parameter ---
+param_titles <- c(
+  v = "Drift Rate",
+  a = "Decision Threshold",
+  t = "Non-decision Time",
+  z = "Bias"
+)
+
+# --- Plot function ---
+make_ddm_plot <- function(param_prefix) {
+  df <- icc_table_ddm_plot %>% filter(parameter == param_prefix)
+  
+  # figure out which conditions are present in this parameter
+  present_ct <- sort(unique(df$cttype))
+  if (all(c("AX","AY","BX","BY") %in% present_ct)) {
+    cond_levels <- c("AX","AY","BX","BY")
+  } else if (all(c("A","B") %in% present_ct)) {
+    cond_levels <- c("A","B")
+  } else {
+    cond_levels <- present_ct
+  }
+  
+  df <- df %>%
+    mutate(cond_label = factor(cttype, levels = rev(cond_levels)))  # rev() = top-down order
+  
+  ggplot(df, aes(x = Group, y = cond_label, fill = icc)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = icc_label, color = text_col),
+              size = 5, fontface = "bold", vjust = -0.35) +
+    geom_text(aes(label = ci_label, color = text_col),
+              size = 3.2, vjust = 0.9) +
+    scale_fill_gradient(low = "white", high = "#610014",
+                        limits = c(-0.1, 1), name = "ICC") +
+    scale_color_identity() +
+    scale_x_discrete(position = "top") +
+    labs(x = "", y = "", title = param_titles[[param_prefix]]) +
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid = element_blank(),
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 14,
+      margin = margin(t = 0, r = 0, b = 4, l = 0)),
+      # bring title closer
+      plot.title.position = "plot", 
+    # title just above panel
+      axis.text.x = element_text(face = "bold", size = 14),
+      axis.text.y = element_text(face = "bold", size = 14)
+    )
+  
+}
+
+# --- Build four parameter plots ---
+plot_v <- make_ddm_plot("v")
+plot_a <- make_ddm_plot("a")
+plot_t <- make_ddm_plot("t")
+plot_z <- make_ddm_plot("z")
+
+# --- Combine with patchwork ---
+combined_plot <- (plot_v | plot_a) / (plot_t | plot_z)
+
+# --- Show & Save ---
+print(combined_plot)
+
+ggsave(
+  filename = "~/Documents/umn_work/topx_analyses/topx_ddm/graphs/test-retest/DDM_ICC_matrix.png",
+  plot = combined_plot,
+  width = 8.5, height = 7, dpi = 300, bg = "white"
+)
+```
+

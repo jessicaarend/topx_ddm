@@ -212,6 +212,43 @@ dat_dprime_bl2_long <- dat_dprime_all_long %>%
 ```
 
 
+## format anova tables
+```{r}
+format_lmer_anova <- function(anova_obj) {
+  # Convert to data frame
+  tab <- as.data.frame(anova_obj)
+  tab$Effect <- rownames(anova_obj)
+  
+  # Extract values using exact names
+  df1 <- tab[["NumDF"]]
+  df2 <- tab[["DenDF"]]
+  fval <- tab[["F value"]]
+  pval <- tab[["Pr(>F)"]]
+  
+  # Drop rows without an F value (e.g., intercept or residual row)
+  keep <- !is.na(fval)
+  tab <- tab[keep, ]
+  df1 <- df1[keep]
+  df2 <- df2[keep]
+  fval <- fval[keep]
+  pval <- pval[keep]
+  
+  # Format p-values
+  p_fmt <- ifelse(pval < .001, "< .001",
+                  paste0("= ", sub("^0", "", sprintf("%.3f", pval))))
+  
+  # Build formatted strings
+  results <- paste0(
+    tab$Effect, ": F(",
+    df1, ", ", round(df2), ") = ",
+    sprintf("%.2f", fval),
+    ", p ", p_fmt
+  )
+  
+  data.frame(Effect = tab$Effect, Result = results, stringsAsFactors = FALSE)
+}
+```
+
 
 ## visualize density/distribution
 ```{r}
@@ -279,7 +316,7 @@ print(emmeans(mod_err_bl1, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_err_bl1, list(pairwise ~ cttype), adjust = "mvt"))
 print(emmeans(mod_err_bl1, list(pairwise ~ group|cttype), adjust = "mvt"))
 print(emmeans(mod_err_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
-check_model(mod_err_bl1)
+##check_model(mod_err_bl1)
 ```
 
 ###d'
@@ -327,7 +364,7 @@ print(emmeans(mod_d_bl1, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_d_bl1, list(pairwise ~ dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_bl1, list(pairwise ~ group|dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_bl1, list(pairwise ~ dprime_type|group), adjust = "mvt"))
-check_model(mod_d_bl1)
+#check_model(mod_d_bl1)
 ```
 
 ### RT
@@ -368,7 +405,7 @@ print(emmeans(mod_rt_bl1, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_rt_bl1, list(pairwise ~ cttype), adjust = "mvt"))
 print(emmeans(mod_rt_bl1, list(pairwise ~ group|cttype), adjust = "mvt"))
 print(emmeans(mod_rt_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
-check_model(mod_rt_bl1)
+##check_model(mod_rt_bl1)
 ```
 
 ## BL2 -----------------------
@@ -408,7 +445,7 @@ print(emmeans(mod_err_bl2, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_err_bl2, list(pairwise ~ cttype), adjust = "mvt"))
 print(emmeans(mod_err_bl2, list(pairwise ~ group|cttype), adjust = "mvt"))
 print(emmeans(mod_err_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
-check_model(mod_err_bl2)
+##check_model(mod_err_bl2)
 ```
 
 ### d'
@@ -456,7 +493,7 @@ print(emmeans(mod_d_bl2, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_d_bl2, list(pairwise ~ dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_bl2, list(pairwise ~ group|dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_bl2, list(pairwise ~ dprime_type|group), adjust = "mvt"))
-check_model(mod_d_bl2)
+##check_model(mod_d_bl2)
 ```
 
 ### RT
@@ -497,7 +534,7 @@ print(emmeans(mod_rt_bl2, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_rt_bl2, list(pairwise ~ cttype), adjust = "mvt"))
 print(emmeans(mod_rt_bl2, list(pairwise ~ group|cttype), adjust = "mvt"))
 print(emmeans(mod_rt_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
-check_model(mod_rt_bl2)
+##check_model(mod_rt_bl2)
 ```
 
 ## BL1+BL2 sep ----------
@@ -535,9 +572,10 @@ plot_err_sep
 
 ### LMER error BL1+BL2 Sep (w/ visit) -----------
 mod_err_sep <- lmer(error ~ group * cttype * visit + age + (1|subj_idx), data = dat_topx_behav)
+anova_err_sep <- anova(mod_err_sep, type = 3)
+anova_err_sep
+format_lmer_anova(anova_err_sep)
 
-
-anova(mod_err_sep, type = 3)
 print(summary(mod_err_sep))
 r.squaredGLMM(mod_err_sep)
 print(emmeans(mod_err_sep, list(pairwise ~ group), adjust = "mvt"))
@@ -549,7 +587,8 @@ print(emmeans(mod_err_sep, list(pairwise ~ group|visit), adjust = "mvt"))
 print(emmeans(mod_err_sep, list(pairwise ~ visit|group), adjust = "mvt"))
 print(emmeans(mod_err_sep, list(pairwise ~ cttype|visit), adjust = "mvt"))
 print(emmeans(mod_err_sep, list(pairwise ~ visit|cttype), adjust = "mvt"))
-check_model(mod_err_sep)
+##check_model(mod_err_sep)
+
 ```
 
 ### d'
@@ -595,7 +634,10 @@ plot_dprime_sep
 
 #### LMER d' BL1+BL2 sep (w/ visit)-----
 mod_d_sep <- lmer(dprime ~ group * dprime_type * visit + age + (1|subj_idx), data = dat_dprime_all_long)
-anova(mod_d_sep, type = 3)
+anova_d_sep <- anova(mod_d_sep, type = 3)
+anova_d_sep
+format_lmer_anova(anova_d_sep)
+
 r.squaredGLMM(mod_d_sep)
 print(emmeans(mod_d_sep, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ dprime_type), adjust = "mvt"))
@@ -605,7 +647,7 @@ print(emmeans(mod_d_sep, list(pairwise ~ dprime_type|group), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ dprime_type|visit), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ visit|dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ group|dprime_type|visit), adjust = "mvt"))
-check_model(mod_d_sep)
+#check_model(mod_d_sep)
 ```
 
 ### RT
@@ -642,7 +684,10 @@ plot_rt_sep
 
 ### LMER RT BL1+BL2 sep (w/ visit) -----------
 mod_rt_sep <- lmer(rt_mdn ~ group * cttype * visit + age + (1|subj_idx), data = dat_topx_behav)
-anova(mod_rt_sep, type = 3)
+anova_rt_sep <- anova(mod_rt_sep, type = 3)
+anova_rt_sep
+format_lmer_anova(anova_rt_sep)
+
 summary(mod_rt_sep)
 r.squaredGLMM(mod_rt_sep)
 print(emmeans(mod_rt_sep, list(pairwise ~ group), adjust = "mvt"))
@@ -652,7 +697,7 @@ print(emmeans(mod_rt_sep, list(pairwise ~ group|cttype), adjust = "mvt"))
 print(emmeans(mod_rt_sep, list(pairwise ~ cttype|group), adjust = "mvt"))
 print(emmeans(mod_rt_sep, list(pairwise ~ group|visit), adjust = "mvt"))
 print(emmeans(mod_rt_sep, list(pairwise ~ visit|group), adjust = "mvt"))
-check_model(mod_rt_sep)
+#check_model(mod_rt_sep)
 ```
 
 ## BL1+BL2 comb -------
@@ -692,7 +737,7 @@ print(emmeans(mod_err_comb, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_err_comb, list(pairwise ~ cttype), adjust = "mvt"))
 print(emmeans(mod_err_comb, list(pairwise ~ group|cttype), adjust = "mvt"))
 print(emmeans(mod_err_comb, list(pairwise ~ cttype|group), adjust = "mvt"))
-check_model(mod_err_comb)
+#check_model(mod_err_comb)
 ```
 
 ### d'
@@ -739,7 +784,7 @@ print(emmeans(mod_d_comb, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_d_comb, list(pairwise ~ dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_comb, list(pairwise ~ group|dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_comb, list(pairwise ~ dprime_type|group), adjust = "mvt"))
-check_model(mod_d_comb)
+#check_model(mod_d_comb)
 
 # exploring with t-tests
 # t.test(d_context ~ group, dat_dprime_all)
@@ -787,7 +832,7 @@ print(emmeans(mod_rt_comb, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_rt_comb, list(pairwise ~ cttype), adjust = "mvt"))
 print(emmeans(mod_rt_comb, list(pairwise ~ group|cttype), adjust = "mvt"))
 print(emmeans(mod_rt_comb, list(pairwise ~ cttype|group), adjust = "mvt"))
-check_model(mod_rt_comb)
+#check_model(mod_rt_comb)
 ```
 
 ### investigate age
@@ -889,7 +934,7 @@ anova(mod_rtAge)
 # MODELED ANALYSES
 
 ## ddm functions
-lmer_bl, lmer_bl_sep, lmer_check, plot_bl, plot_bl_sep
+lmer_bl, format_lmer_anova, lmer_bl_sep, lmer_check, plot_bl, plot_bl_sep
 ```{r}
 # run lmer for single dataset (BL1, BL2 or BL1-BL2 merged)
 lmer_bl <- function(dat,  model_name = "model_output", posthoc = FALSE) {
@@ -905,13 +950,50 @@ lmer_bl <- function(dat,  model_name = "model_output", posthoc = FALSE) {
   }
 }
 
+# Helper: format ANOVA table
+format_lmer_anova <- function(anova_obj) {
+  tab <- as.data.frame(anova_obj)
+  tab$Effect <- rownames(anova_obj)
+  
+  df1  <- tab[["NumDF"]]
+  df2  <- tab[["DenDF"]]
+  fval <- tab[["F value"]]
+  pval <- tab[["Pr(>F)"]]
+  
+  # Drop rows without an F value
+  keep <- !is.na(fval)
+  tab  <- tab[keep, ]
+  df1  <- df1[keep]
+  df2  <- df2[keep]
+  fval <- fval[keep]
+  pval <- pval[keep]
+  
+  # Format p-values
+  p_fmt <- ifelse(pval < .001, "< .001",
+                  paste0("= ", sub("^0", "", sprintf("%.3f", pval))))
+  
+  # Build formatted strings
+  results <- paste0(
+    tab$Effect, ": F(",
+    df1, ", ", round(df2), ") = ",
+    sprintf("%.2f", fval),
+    ", p ", p_fmt
+  )
+  
+  data.frame(Effect = tab$Effect, Result = results, stringsAsFactors = FALSE)
+}
+
 # run lmer for multiple visits (BL1 and BL2)
 lmer_bl_sep <- function(dat, model_name = "model_output", posthoc = FALSE) {
   model <- lmer(mean ~ group * cttype * visit + age + (1|subj_idx), dat)
-  assign(model_name, model, envir = .GlobalEnv)  # Save the model in the global environment
+  assign(model_name, model, envir = .GlobalEnv)  # save model globally
+  
+  # Print standard outputs
   print(anova(model, type = 3))
   print(summary(model))
-  if(posthoc == TRUE) {
+  
+  # Posthocs if requested
+  if (posthoc == TRUE) {
     print(emmeans(model, list(pairwise ~ group), adjust = "mvt"))
     print(emmeans(model, list(pairwise ~ cttype), adjust = "mvt"))
     print(emmeans(model, list(pairwise ~ visit), adjust = "mvt"))
@@ -925,6 +1007,8 @@ lmer_bl_sep <- function(dat, model_name = "model_output", posthoc = FALSE) {
     print(emmeans(model, list(pairwise ~ cttype|group|visit), adjust = "mvt"))
     print(emmeans(model, list(pairwise ~ visit|group|cttype), adjust = "mvt"))
   }
+  
+  invisible(model)  # return model invisibly so it can be used later
 }
 
 # check lmer model fit
@@ -933,13 +1017,13 @@ lmer_check <- function(model, title_lab) {
   print(car::vif(model))
   print(model_parameters(model))
   # check model and save plots
-  mod_check_plots <- check_model(model)
-  print(mod_check_plots)
-  png(paste0("graphs/model_check/", format(Sys.Date(), "%Y%m%d"),
-             "_ModelCheck_", title_lab, ".png"),
-      width = 500, height = 600)
-  plot(mod_check_plots)
-  dev.off()
+ # mod_check_plots <- #check_model(model)
+  #print(mod_check_plots)
+  #png(paste0("graphs/model_check/", format(Sys.Date(), "%Y%m%d"),
+    #         "_ModelCheck_", title_lab, ".png"),
+    #  width = 500, height = 600)
+  #plot(mod_check_plots)
+  #dev.off()
 }
 
 # extra code taht could be used for further testing:
@@ -1141,6 +1225,7 @@ lmer_check(mod_z_comb, "z_comb")
 ```{r}
 plot_bl_sep(v_dat_all, "Drift Rates", "Drift Rate (v)", "DriftRate_Sep", .7, 3)
 lmer_bl_sep(v_dat_all, "mod_v_sep", posthoc = TRUE)
+format_lmer_anova(anova(mod_v_sep, type = 3))
 r.squaredGLMM(mod_v_sep)
 lmer_check(mod_v_sep, "v_sep")
 ```
@@ -1149,6 +1234,7 @@ lmer_check(mod_v_sep, "v_sep")
 ```{r}
 plot_bl_sep(a_dat_all, "Decision Thresholds", "Decision Threshold (a)", "DecisionThreshold_Sep", .47, .63)
 lmer_bl_sep(a_dat_all, "mod_a_sep", posthoc = TRUE)
+format_lmer_anova(anova(mod_a_sep, type = 3))
 r.squaredGLMM(mod_a_sep)
 lmer_check(mod_a_sep, "a_sep")
 ```
@@ -1157,6 +1243,7 @@ lmer_check(mod_a_sep, "a_sep")
 ```{r}
 plot_bl_sep(t_dat_all, "Non-Decision Times", "Non-Decision Time (t)", "NonDecisionTime_Sep", .17, .25)
 lmer_bl_sep(t_dat_all, "mod_t_sep", posthoc = TRUE)
+format_lmer_anova(anova(mod_t_sep, type = 3))
 r.squaredGLMM(mod_t_sep)
 lmer_check(mod_t_sep, "t_sep")
 ```
@@ -1165,6 +1252,7 @@ lmer_check(mod_t_sep, "t_sep")
 ```{r}
 plot_bl_sep(z_dat_all, "Degrees of Bias", "Degree of Bias (w)", "Bias_Sep", .5, .65)
 lmer_bl_sep(z_dat_all, "mod_z_sep", posthoc = TRUE)
+format_lmer_anova(anova(mod_z_sep, type = 3))
 r.squaredGLMM(mod_z_sep)
 lmer_check(mod_z_sep, "z_sep")
 ```
@@ -1667,6 +1755,16 @@ ggplot(v_dat_all_pt_bl1_AY, aes(x=mean, y=bprs_negative)) + geom_point() + geom_
 
 ```
 
+```{r}
+plot_drift_comb_neg <- ggplot(dat_ddm_comb_intc, aes(x=v_sum, y=bprs_negative)) +
+  geom_point() + 
+  geom_smooth(method=lm, se = FALSE) + 
+  labs(x="Drift Rate", y = "Negative Symptoms") +
+  theme_classic()
+print(plot_drift_comb_neg)
+```
+
+
 # DDM-BPRS Correlations at BL1+BL2 Comb - pearson
 ```{r}
 # merge intercepts with behav data
@@ -1779,15 +1877,30 @@ print("spearman rho")
 print(cor_matrix_v5)
 print("spearman p")
 print(p_matrix_v5)
+```
+
+```{r}
+library(corrplot)
+
+# Copy correlation matrix so you can modify it
+cor_plot_v5 <- cor_matrix_v5
+diag(cor_plot_v5) <- NA
+
+# Define color palette (centered around 0)
+col_pal <- colorRampPalette(c("blue", "white", "red"))(200)
 
 # Plot Spearman correlation matrix with significance masking
-library(corrplot)
-corrplot(cor_matrix_v5,
+corrplot(cor_plot_v5,
          method = "color",
+         col = col_pal,
+         is.corr = FALSE, #this is the parameter you were looking for
+         col.lim = c(-0.5, 0.5),
+         type = "lower",
+         diag = FALSE,
          #p.mat = p_values,
          sig.level = 0.05,
          insig = "blank",
-         addCoef.col = 'grey45',
+         addCoef.col = 'grey5',
          tl.cex = 1,
          tl.col = "black",
          number.cex = 1,
