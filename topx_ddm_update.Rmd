@@ -15,7 +15,7 @@ output:
 rm(list=ls())
 
 # read in packages
-pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, ggpubr, emmeans, lme4, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats, corrplot, MuMIn) 
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, ggpubr, emmeans, lme4, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats, corrplot, MuMIn, corrplot)
 ```
 
 ## load DDM data
@@ -86,7 +86,16 @@ dat_ddm_all <- dat_ddm_all %>%
                              cttype == "b" ~ "B",
                              TRUE ~ cttype))
 
-# dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1051")
+# remove SP1051 because only completed 19 trials of TOPX at BL2
+# remove SP2153 because didn't understand TOPX, 0% correct AX at BL2
+# remove SP2199 d/t BL1, SP1123 and SP2112 based on BL2 w/ Shen&Calvin criteria
+dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1051")
+dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP2153")
+dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1123")
+dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP2112")
+dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP2199")
+
+# filter by visit
 dat_ddm_bl1 <- filter(dat_ddm_all, visit == "BL1")
 dat_ddm_bl2 <- filter(dat_ddm_all, visit == "BL2")
 ```
@@ -100,7 +109,7 @@ dat_ddm_bl2 <- filter(dat_ddm_all, visit == "BL2")
 ## load TOPX data
 ```{r}
 ### TOPX data ----------
-dat_topx <- read.csv("../topx_clean/aggregate_data/aggregate_topx_20250125.csv")
+dat_topx <- read.csv("../topx_clean/aggregate_data/aggregate_topx_filtered_20260423.csv")
 
 # clean and rename
 dat_topx[dat_topx == "BL1.5"] <- "BL1"
@@ -113,6 +122,15 @@ dat_topx <- dat_topx %>%
   rename(subj_idx = subj) %>% 
   rename(group = subj_type) %>% 
   rename(cttype = trial_type)
+
+# remove SP1051 because only completed 19 trials of TOPX at BL2
+# remove SP2153 because didn't understand TOPX, 0% correct AX at BL2
+# remove SP2199 d/t BL1, SP1123 and SP2112 based on BL2 w/ Shen&Calvin criteria
+dat_topx <- filter(dat_topx, subj_idx != "SP1051")
+dat_topx <- filter(dat_topx, subj_idx != "SP2153")
+dat_topx <- filter(dat_topx, subj_idx != "SP1123")
+dat_topx <- filter(dat_topx, subj_idx != "SP2112")
+dat_topx <- filter(dat_topx, subj_idx != "SP2199")
 
 ## Baseline 1
 dat_topx_bl1 <- dat_topx %>% 
@@ -135,16 +153,21 @@ dat_topx_all <- rbind(dat_topx_bl1, dat_topx_bl2)
 
 # remove TOPX data if not in DDM
 dat_topx_all <- subset(dat_topx_all, (subj_idx %in% dat_ddm_all$subj_idx))
-
-# remove ppt with no demographic data?
-dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1051")
-
 ```
 
 ## load behav data
 ```{r}
 dat_behav <- read.csv("data/step_behav_dat_for_ddm_20250317.csv")
 colnames(dat_behav)[1] <- "subj_idx"
+
+# remove SP1051 because only completed 19 trials of TOPX at BL2
+# remove SP2153 because didn't understand TOPX, 0% correct AX at BL2
+# remove SP2199 d/t BL1, SP1123 and SP2112 based on BL2 w/ Shen&Calvin criteria
+dat_behav <- filter(dat_behav, subj_idx != "SP1051")
+dat_behav <- filter(dat_behav, subj_idx != "SP2153")
+dat_behav <- filter(dat_behav, subj_idx != "SP1123")
+dat_behav <- filter(dat_behav, subj_idx != "SP2112")
+dat_behav <- filter(dat_behav, subj_idx != "SP2199")
 
 dat_behav <- dat_behav %>%
   mutate(age_split = ifelse(age >= median(age, , na.rm = TRUE), 1, 0),  .after = age) %>% 
@@ -161,6 +184,8 @@ dat_behav %>%
 dat_behav$group_num <- ifelse(dat_behav$group == "Control", 0, 
                      ifelse(dat_behav$group == "Patient", 1, 
                             NA))
+
+
 ```
 
 ## combine + subset data
@@ -222,7 +247,7 @@ dat_dprime_bl2_long <- dat_dprime_all_long %>%
 ```
 
 
-## format anova tables
+## function: format anova tables
 ```{r}
 format_lmer_anova <- function(anova_obj) {
   # Convert to data frame
@@ -260,7 +285,7 @@ format_lmer_anova <- function(anova_obj) {
 ```
 
 
-## visualize density/distribution
+## function: visualize density/distribution
 ```{r}
 plot_dist_behav <- function(dat, var) {
   plot <- ggplot(dat, aes(x = {{var}}, group = cttype, fill = cttype)) +
@@ -963,7 +988,7 @@ plot_bl_sep <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
 }
 ```
 
-## visualize density/distribution
+## function: visualize density/distribution
 ```{r}
 plot_dist_mod <- function(dat) {
   plot <- ggplot(dat, aes(x = mean, group = cttype, fill = cttype)) +
@@ -1266,9 +1291,10 @@ cor.test(t_dat_bl2_BY$age, t_dat_bl2_BY$mean)
 ```
 
 #AFF/NON-AFF
+
 ## error
 ```{r}
-## plot TOPX error - Aff/NonAff
+## TOPX error - Aff/NonAff
 dat_topx_behav$dx_affect <- factor(dat_topx_behav$dx_affect,
                              levels = c(0, 1, 2),
                              labels = c("Ctl", "Non-Aff", "Aff"))
@@ -1308,7 +1334,9 @@ plot_err_aff <- ggplot(dat_topx_behav,
         legend.text = element_text(face="bold", size = 14),
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
-plot_err_aff
+print(plot_err_aff)
+ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Aff.png"),
+         plot_err_aff, width = 6, height = 4)
 ```
 
 ## RT
@@ -1348,8 +1376,12 @@ plot_rt_aff <- ggplot(dat_topx_behav,
         legend.text = element_text(face="bold", size = 14),
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
-plot_rt_aff
+print(plot_rt_aff)
+ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Aff.png"),
+         plot_rt_aff, width = 6, height = 4)
+
 ```
+
 ## DDM functions
 ```{r}
 v_dat_all$dx_affect <- factor(v_dat_all$dx_affect,
@@ -1388,11 +1420,14 @@ plot_bl_aff <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
   plot <- ggplot(dat_dummy, aes(x= cttype, y=mean, 
                    group = interaction(dx_affect,visit))) + 
     stat_summary(fun="mean", geom="line", 
-                 aes(color = dx_affect, linetype = visit), size = 1.5) + 
-    stat_summary(fun="mean", geom="point", aes(color = dx_affect), size = 3) +
+                 aes(color = dx_affect, linetype = visit), size = 1.5, 
+                 position = position_dodge(0.2)) +
+    stat_summary(fun="mean", geom="point",
+                 aes(color = dx_affect), size = 3,
+                 position = position_dodge(0.2)) +
     stat_summary(fun.data = mean_se, geom = "errorbar", 
-                 aes(color = dx_affect), width = 0.1, 
-                 size = 1) + 
+                 aes(color = dx_affect), width = .7, 
+                 size = 1, position = position_dodge(0.2)) + 
     labs(title = title_lab, y = param_lab, 
          x = "Trial Type", color = "Group", linetype = "Visit") +
     coord_cartesian(ylim = c(ymin, ymax)) +
@@ -1439,7 +1474,7 @@ plot_bl_aff(z_dat_all, "Degrees of Bias", "Degree of Bias (w)", "Bias_Aff", .5, 
 lmer_bl_aff(z_dat_all, "mod_z_aff", posthoc = TRUE)
 ```
 
-# CORRELATIONS
+# DDM CORRELATIONS
 # correlations - 14 vars
 ## comb
 ```{r}
@@ -1537,7 +1572,7 @@ corrplot(dat_cor_bl2,
 # Custom function to read, select, and join datasets
 process_data_intc <- function(block, types, column_mappings) {
   datasets <- lapply(types, function(type) {
-    file_path <- paste0("~/Documents/umn_work/topx_analyses/topx_ddm/data/20241031_ddm_data/", block, "/stats_", type, ".csv")
+    file_path <- paste0("~/Documents/umn_work/analyses/topx_analyses/topx_ddm/data/20241031_ddm_data/", block, "/stats_", type, ".csv")
     read.csv(file_path) %>%
       select(all_of(column_mappings[[type]])) %>%
       rename(!!paste0(type, "_ppt") := participant)
@@ -1797,24 +1832,30 @@ ggplot(v_dat_all_pt_bl1_AY, aes(x=mean, y=bprs_negative)) + geom_point() + geom_
 #          mar = c(1, 1, 2, 1))
 
 ```
-
-```{r}
-plot_drift_comb_neg <- ggplot(dat_ddm_comb_intc, aes(x=v_sum, y=bprs_negative)) +
-  geom_point() + 
-  geom_smooth(method=lm, se = FALSE) + 
-  labs(x="Drift Rate", y = "Negative Symptoms") +
-  theme_classic()
-print(plot_drift_comb_neg)
-```
-
-
-# DDM-BPRS Correlations at BL1+BL2 Comb - pearson
+#v-BPRS neg plot
 ```{r}
 # merge intercepts with behav data
 dat_ddm_comb_intc <- merge(dat_ddm_comb_intc, dat_behav, by = "subj_idx", all.x = TRUE)
 dat_ddm_comb_intc_pt <- dat_ddm_comb_intc %>% 
   filter(group == "Patient")
 
+plot_drift_comb_neg <- ggplot(dat_ddm_comb_intc, aes(x=v_sum, y=bprs_negative)) +
+  geom_point(size = 1.5) + 
+  geom_smooth(method=lm, se = FALSE, color = "#A61936", size = 1.2) +
+  labs(x="Drift Rate (v)", y = "BPRS Negative Symptoms") +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 16),   # axis label font size
+    axis.text = element_text(size = 14)     # axis tick font size
+  )
+print(plot_drift_comb_neg)
+ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_Drift_BPRS-Neg.png"),
+         plot_drift_comb_neg, width = 6, height = 4)
+```
+
+
+# DDM-BPRS Correlations at BL1+BL2 Comb - pearson
+```{r}
 # filter data to only include intercepts and bprs
 dat_cor_comb_pt <- dat_ddm_comb_intc_pt %>% 
   select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws)
@@ -1917,39 +1958,222 @@ for (i in 1:(n - 1)) {
 p_matrix_v5[n, n] <- 0
 
 print("spearman rho")
-print(cor_matrix_v5)
-print("spearman p")
-print(p_matrix_v5)
+print(round(cor_matrix_v5, 2))
+print("spearman p raw values")
+print(round(p_matrix_v5, 3))
+
+# adjust p-values
+# Extract upper triangle p-values
+upper_idx <- upper.tri(p_matrix_v5)
+p_vals <- p_matrix_v5[upper_idx]
+p_adj <- p.adjust(p_vals, method = "BH")  # FDR correction
+p_matrix_adj_v5 <- matrix(NA, n, n)
+colnames(p_matrix_adj_v5) <- colnames(p_matrix_v5)
+rownames(p_matrix_adj_v5) <- rownames(p_matrix_v5)
+
+# Fill upper triangle
+p_matrix_adj_v5[upper_idx] <- p_adj
+
+# Mirror to lower triangle
+p_matrix_adj_v5 <- t(p_matrix_adj_v5)
+p_matrix_adj_v5[upper_idx] <- p_adj
+
+# Set diagonal to 0
+diag(p_matrix_adj_v5) <- 0
+print("adjusted p-values (BH)")
+print(round(p_matrix_adj_v5, 3))
 ```
 
+# DDM-BPRS plot
 ```{r}
-library(corrplot)
-
 # Copy correlation matrix so you can modify it
 cor_plot_v5 <- cor_matrix_v5
 diag(cor_plot_v5) <- NA
+rownames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
+colnames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
 
 # Define color palette (centered around 0)
-col_pal <- colorRampPalette(c("blue", "white", "red"))(200)
+col_pal <- colorRampPalette(c("#358E9C", "white", "#A30021"))(200)
+
+# define coefficient text colors
+#text_colors <- matrix(ifelse(cor_plot_v5 > 0.3, "white", "black"),
+                      # nrow = nrow(cor_plot_v5),
+                      # ncol = ncol(cor_plot_v5))
+#text_colors[upper.tri(text_colors, diag = TRUE)] <- NA
+#text_colors <- text_colors[-1, ]   # removes the first row
+#text_colors <- text_colors[,-7]   # removes the first row
+#text_colors_vec <- as.vector(t(text_colors))
+
 
 # Plot Spearman correlation matrix with significance masking
+filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.png")
+png(filename, width = 6, height = 6, units = "in", res = 300)  # width/height in pixels
+dev.cur()
 corrplot(cor_plot_v5,
          method = "color",
          col = col_pal,
-         is.corr = FALSE, #this is the parameter you were looking for
-         col.lim = c(-0.5, 0.5),
+         is.corr = FALSE,
+         col.lim = c(-0.5, .5),
          type = "lower",
-         diag = FALSE,
+         diag = TRUE,
+         
          #p.mat = p_values,
          sig.level = 0.05,
          insig = "blank",
-         addCoef.col = 'grey5',
-         tl.cex = 1,
-         tl.col = "black",
-         number.cex = 1,
-         title = "Spearman Correlations of Parameters and BPRS",
-         mar = c(1, 1, 2, 1))
+         addCoef.col = "black", #text_colors,
+         number.cex = 0.7,
 
+         tl.col = "black",
+         tl.pos = "t",
+         tl.cex = 0.7,
+         tl.srt = 45,
+         
+         cl.pos = "r",
+         cl.cex = 0.7,
+         cl.ratio = 0.2,
+         cl.align.text = "l",
+         
+         title = "Spearman Correlations of Parameters and BPRS",
+         cex.main = .9,
+         mar = c(1, 1, 2, 1),
+         frame.plot = TRUE)
+dev.off()
+plot_ddm_bprs
+ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.png"),
+         plot_ddm_bprs, width = 6, height = 6)
+
+# ggplot version, bottom right diagonal
+# library(ggcorrplot)
+# ggcorrplot(cor_plot_v5,
+#            type = "lower",
+#            lab = TRUE,
+#            lab_size = 3,
+#            colors = col_pal) +          # color palette
+#   scale_fill_gradient2(
+#     low = "#2c7bb6",              # negative correlations
+#     mid = "white",
+#     high = "#d7191c",             # positive correlations
+#     midpoint = 0                  # center the color scale at 0
+#   ) +
+#   theme_classic() +
+#   theme(
+#     axis.text.x = element_text(angle = 45, hjust = 1),  # bottom x labels
+#     axis.text.y = element_text(hjust = 1)               # left y labels
+#   )
+```
+
+# TOPX CORRELATIONS
+# TOPX-BPRS Correlations at BL1+BL2 Comb - spearman
+```{r, warning=FALSE}
+# filter data to only include intercepts and BPRS variables
+dat_topx_behav_wide <- dat_topx_behav %>% 
+  select(c(subj_idx, group, visit, cttype, rt_mdn, error, d_context, d_expect, bprs_total, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws))
+
+dat_topx_behav_wide <- dat_topx_behav_wide %>%
+  pivot_wider(id_cols = c(subj_idx, group, visit, d_context, d_expect, bprs_total, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws), values_from = c(rt_mdn, error), names_from = cttype)
+
+dat_cor_topx_bprs <- dat_topx_behav_wide %>%
+  filter(group == "Patient") %>% 
+  select(c(error_AX, error_AY, error_BX, d_context, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws))
+  
+  # 
+  # pivot_longer(
+  #   cols = c(v_ax, v_ay, v_bx, v_by, a_ax, a_ay, a_bx, a_by, 
+  #            t_ax, t_ay, t_bx, t_by, z_a, z_b),
+  #   names_to = c("parameter", "cttype"), 
+  #   names_sep = "_", 
+  #   values_to = "mean"
+  # ) %>%
+  # mutate(
+  #   group = case_when(
+  #     str_sub(subj_idx, 1, 3) == "SP1" ~ "Control",
+  #     str_sub(subj_idx, 1, 3) == "SP2" ~ "Patient",
+  #     TRUE ~ NA
+  #   )
+  # )
+
+# dat_cor_comb_pt_v2 <- dat_topx_behav %>% 
+#   select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws)
+# 
+# # Remove rows with all NA
+# dat_cor_comb_pt_v2 <- dat_cor_comb_pt_v2[rowSums(is.na(dat_cor_comb_pt_v2)) < ncol(dat_cor_comb_pt_v2), ]
+
+# Compute Spearman correlation matrix
+cor_matrix_v6 <- cor(dat_cor_topx_bprs, use = "pairwise.complete.obs", method = "spearman")
+
+# Rename for plotting
+colnames(cor_matrix_v6) <- c("AX Error", "AY Error", "BX Error", "d' Context", "Positive", "Negative", "Disorganized")
+rownames(cor_matrix_v6) <- c("AX Error", "AY Error", "BX Error", "d' Context", "Positive", "Negative", "Disorganized")
+# 
+# # Create p-value matrix for Spearman
+# n <- ncol(dat_cor_comb_pt)
+# p_values <- matrix(NA, n, n)
+# colnames(p_values) <- colnames(cor_matrix_v5)
+# rownames(p_values) <- rownames(cor_matrix_v5)
+# 
+# for (i in 1:(n - 1)) {
+#   for (j in (i + 1):n) {
+#     test <- cor.test(dat_cor_comb_pt[[i]], dat_cor_comb_pt[[j]], method = "spearman")
+#     p_values[i, j] <- test$p.value
+#     p_values[j, i] <- test$p.value
+#   }
+#   p_values[i, i] <- 0
+# }
+# p_values[n, n] <- 0  # Diagonal last cell
+
+# Number of variables
+n <- ncol(dat_cor_topx_bprs)
+# Initialize p-value matrix
+p_matrix_v6 <- matrix(NA, n, n)
+colnames(p_matrix_v6) <- colnames(cor_matrix_v6)
+rownames(p_matrix_v6) <- colnames(cor_matrix_v6)
+
+# Loop through all unique variable pairs
+for (i in 1:(n - 1)) {
+  for (j in (i + 1):n) {
+    x <- dat_cor_topx_bprs[[i]]
+    y <- dat_cor_topx_bprs[[j]]
+    valid_idx <- complete.cases(x, y)
+    
+    if (sum(valid_idx) >= 3) {
+      test <- cor.test(x[valid_idx], y[valid_idx], method = "spearman")
+      p_matrix_v6[i, j] <- test$p.value
+      p_matrix_v6[j, i] <- test$p.value
+    } else {
+      p_matrix_v6[i, j] <- NA
+      p_matrix_v6[j, i] <- NA
+    }
+  }
+  p_matrix_v6[i, i] <- 0
+}
+p_matrix_v6[n, n] <- 0
+
+print("spearman rho")
+print(round(cor_matrix_v6, 2))
+print("spearman p")
+print(round(p_matrix_v6, 3))
+
+
+# adjust p-values
+# Extract upper triangle p-values
+upper_idx <- upper.tri(p_matrix_v6)
+p_vals <- p_matrix_v6[upper_idx]
+p_adj <- p.adjust(p_vals, method = "BH")  # FDR correction
+p_matrix_adj_v6 <- matrix(NA, n, n)
+colnames(p_matrix_adj_v6) <- colnames(p_matrix_v6)
+rownames(p_matrix_adj_v6) <- rownames(p_matrix_v6)
+
+# Fill upper triangle
+p_matrix_adj_v6[upper_idx] <- p_adj
+
+# Mirror to lower triangle
+p_matrix_adj_v6 <- t(p_matrix_adj_v6)
+p_matrix_adj_v6[upper_idx] <- p_adj
+
+# Set diagonal to 0
+diag(p_matrix_adj_v6) <- 0
+print("adjusted p-values (BH)")
+print(round(p_matrix_adj_v6, 3))
 ```
 
 
