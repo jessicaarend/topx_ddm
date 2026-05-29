@@ -15,7 +15,7 @@ output:
 rm(list=ls())
 
 # read in packages
-pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, ggpubr, emmeans, lme4, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats, corrplot, MuMIn, corrplot)
+pacman::p_load(stats, stringr, dplyr, tidyr, ggplot2, ggpubr, emmeans, lme4, lmerTest, Matrix, pbkrtest, psych, car, performance, parameters, xgboost, SHAPforxgboost, stats, corrplot, MuMIn, corrplot, ggcorrplot)
 ```
 
 ## load DDM data
@@ -47,20 +47,23 @@ types <- names(column_mappings)
 dat_ddm_bl1 <- process_data("bl1", types, column_mappings)
 dat_ddm_bl2 <- process_data("bl2", types, column_mappings)
 
+# rename ppt id variable
+colnames(dat_ddm_bl1)[1] <- "subj_idx"
+colnames(dat_ddm_bl2)[1] <- "subj_idx"
+
 # Filter to retain only common participant_ids
-common_ids <- intersect(dat_ddm_bl1$participant_id, dat_ddm_bl2$participant_id)
-dat_ddm_bl1 <- filter(dat_ddm_bl1, participant_id %in% common_ids)
-dat_ddm_bl2 <- filter(dat_ddm_bl2, participant_id %in% common_ids)
+common_ids <- intersect(dat_ddm_bl1$subj_idx, dat_ddm_bl2$subj_idx)
+dat_ddm_bl1 <- filter(dat_ddm_bl1, subj_idx %in% common_ids)
+dat_ddm_bl2 <- filter(dat_ddm_bl2, subj_idx %in% common_ids)
 
 # Combine both datasets
 dat_ddm_all <- bind_rows(dat_ddm_bl1, dat_ddm_bl2)
 
-# save long format for later, before pivoting wider
-dat_ddm_all_long <- dat_ddm_all
+# save wide format for later, before pivoting longer
+dat_ddm_all_wide <- dat_ddm_all
 
 # Rename, pivot, and add `subj_type` column
 dat_ddm_all <- dat_ddm_all %>%
-  rename(subj_idx = participant_id) %>%
   pivot_longer(
     cols = c(v_ax, v_ay, v_bx, v_by, a_ax, a_ay, a_bx, a_by, 
              t_ax, t_ay, t_bx, t_by, z_a, z_b),
@@ -85,19 +88,51 @@ dat_ddm_all <- dat_ddm_all %>%
                              cttype == "a" ~ "A",
                              cttype == "b" ~ "B",
                              TRUE ~ cttype))
+```
 
-# remove SP1051 because only completed 19 trials of TOPX at BL2
-# remove SP2153 because didn't understand TOPX, 0% correct AX at BL2
-# remove SP2199 d/t BL1, SP1123 and SP2112 based on BL2 w/ Shen&Calvin criteria
-dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1051")
-dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP2153")
-dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP1123")
-dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP2112")
-dat_ddm_all <- filter(dat_ddm_all, subj_idx != "SP2199")
+## filter DDM data
+```{r}
+# EXCLUSIONS
+# ALL:
+# remove partial data: SP1051 (BL2 trials n = 19) and SP2112 (BL2 trials n = 107)
+
+# OPTION 1 (aka Shen & Calvin criteria): 
+# exclude participants with 1 probe response for 95% percent of all trials (indicating "button mashing")
+# exclude participants who have invalid responses ("respond faster") for 50% or more of all trials
+# for DDM fitting only, but not for this script: exclude trials < 150ms
+# SP2153 BL2 was almost 100% incorrect - using wrong probe response
+# SP2199 BL1 has too many "respond faster" trials (57%)
+
+# OPTION 2: Option 1 + exclude participants with >90% errors on AX or >50% errors on BY --> using this for main text of manuscript
+
+# OPTION 3: Option 1 + MacDonald criteria:
+# exclude ppts with >90% errors on AX, AY, BX
+# exclude ppts with >50% errors on BY
+# based on "subj_topx_exclusion_list_20260506.xlsx", which was manually created based on TOPX_descriptives_acc_rt.R -> output to aggregate_topx_invalid_20260424.xlsx"
+
+sub_excl_opt1 <- c("SP1051", #partial data
+                   "SP2112", "SP2153", "SP2199") #S&C
+sub_excl_opt2 <- c("SP1051", #partial data
+                   "SP2112", "SP2153", "SP2199", #S&C
+                   "SP2014", "SP2113","SP2144", #AX/BY
+                   "SP2228", "SP2276")
+sub_excl_opt3 <- c("SP1051", #partial data
+                   "SP2112", "SP2153", "SP2199", #S&C
+                   "SP2014", "SP2113","SP2144", #AX/BY
+                   "SP2228", "SP2276",
+                   "SP1079", "SP1117", "SP2190", #AY/BX
+                   "SP2200", "SP2202", "SP2219", 
+                   "SP2263", "SP2266")
+# dat_ddm_all <- filter(dat_ddm_all, !subj_idx %in% sub_excl_opt1)
+dat_ddm_all <- filter(dat_ddm_all, !subj_idx %in% sub_excl_opt2)
+# dat_ddm_all <- filter(dat_ddm_all, !subj_idx %in% sub_excl_opt3)
 
 # filter by visit
 dat_ddm_bl1 <- filter(dat_ddm_all, visit == "BL1")
 dat_ddm_bl2 <- filter(dat_ddm_all, visit == "BL2")
+
+# filter long version too
+dat_ddm_all_wide <- filter(dat_ddm_all_wide, !subj_idx %in% sub_excl_opt2)
 ```
 
 ## save list of subj
@@ -109,7 +144,7 @@ dat_ddm_bl2 <- filter(dat_ddm_all, visit == "BL2")
 ## load TOPX data
 ```{r}
 ### TOPX data ----------
-dat_topx <- read.csv("../topx_clean/aggregate_data/aggregate_topx_filtered_20260423.csv")
+dat_topx <- read.csv("../topx_clean/aggregate_data/aggregate_topx_20260509.csv")
 
 # clean and rename
 dat_topx[dat_topx == "BL1.5"] <- "BL1"
@@ -120,17 +155,14 @@ dat_topx[dat_topx == "12M.5"] <- "12M"
 
 dat_topx <- dat_topx %>%
   rename(subj_idx = subj) %>% 
-  rename(group = subj_type) %>% 
   rename(cttype = trial_type)
 
 # remove SP1051 because only completed 19 trials of TOPX at BL2
 # remove SP2153 because didn't understand TOPX, 0% correct AX at BL2
 # remove SP2199 d/t BL1, SP1123 and SP2112 based on BL2 w/ Shen&Calvin criteria
-dat_topx <- filter(dat_topx, subj_idx != "SP1051")
-dat_topx <- filter(dat_topx, subj_idx != "SP2153")
-dat_topx <- filter(dat_topx, subj_idx != "SP1123")
-dat_topx <- filter(dat_topx, subj_idx != "SP2112")
-dat_topx <- filter(dat_topx, subj_idx != "SP2199")
+dat_topx <- filter(dat_topx, !subj_idx %in% sub_excl_opt2)
+# dat_topx <- filter(dat_topx, !subj_idx %in% sub_excl_opt3)
+
 
 ## Baseline 1
 dat_topx_bl1 <- dat_topx %>% 
@@ -141,8 +173,8 @@ dat_topx_bl2 <- dat_topx %>%
   filter(visit == "BL2") 
 
 ## 6-Month
-dat_6m_topx <- dat_topx %>% 
-  filter(visit == "6M") 
+dat_6m_topx <- dat_topx %>%
+  filter(visit == "6M")
 
 ## match BL1 to BL2 TOPX 
 dat_topx_bl1 <- subset(dat_topx_bl1, (subj_idx %in% dat_topx_bl2$subj_idx))
@@ -153,22 +185,25 @@ dat_topx_all <- rbind(dat_topx_bl1, dat_topx_bl2)
 
 # remove TOPX data if not in DDM
 dat_topx_all <- subset(dat_topx_all, (subj_idx %in% dat_ddm_all$subj_idx))
+# remove TOPX data if not in DDM
+dat_topx_bl1 <- subset(dat_topx_bl1, (subj_idx %in% dat_ddm_all$subj_idx))
+dat_topx_bl2 <- subset(dat_topx_bl2, (subj_idx %in% dat_ddm_all$subj_idx))
+
 ```
 
 ## load behav data
 ```{r}
-dat_behav <- read.csv("data/step_behav_dat_for_ddm_20250317.csv")
+# load in behavioral data
+dat_behav <- read.csv("data/step_behav_dat_for_ddm_20260509.csv")
 colnames(dat_behav)[1] <- "subj_idx"
+# remove visit or it will throw errors later!
+dat_behav <- dat_behav %>% 
+  select(-visit)
 
-# remove SP1051 because only completed 19 trials of TOPX at BL2
-# remove SP2153 because didn't understand TOPX, 0% correct AX at BL2
-# remove SP2199 d/t BL1, SP1123 and SP2112 based on BL2 w/ Shen&Calvin criteria
-dat_behav <- filter(dat_behav, subj_idx != "SP1051")
-dat_behav <- filter(dat_behav, subj_idx != "SP2153")
-dat_behav <- filter(dat_behav, subj_idx != "SP1123")
-dat_behav <- filter(dat_behav, subj_idx != "SP2112")
-dat_behav <- filter(dat_behav, subj_idx != "SP2199")
+# behavioral data has already been filtered to match ppt list with DDM; if not, can use sub_excl_opt2
+dat_behav <- filter(dat_behav, !subj_idx %in% sub_excl_opt2)
 
+# create age split for later analyses of age effects
 dat_behav <- dat_behav %>%
   mutate(age_split = ifelse(age >= median(age, , na.rm = TRUE), 1, 0),  .after = age) %>% 
   mutate(age_split = as.numeric(age_split))
@@ -179,13 +214,6 @@ median(dat_behav$age)
 dat_behav %>%
   group_by(age_split) %>%
   summarize(age = mean(age, na.rm = TRUE))
-
-# create numeric value for group
-dat_behav$group_num <- ifelse(dat_behav$group == "Control", 0, 
-                     ifelse(dat_behav$group == "Patient", 1, 
-                            NA))
-
-
 ```
 
 ## combine + subset data
@@ -314,32 +342,67 @@ normality_test(z_dat_all)
 
 ```
 
+## set plot parameters
+```{r}
+# set plot parameters
+dodge_width = .3
+line_width = 1.2
+dot_size = 2.2
+error_width_15 = .15
+error_width_25 = .25
+error_width_5 = .5
+axis_text = 14
+axis_title = 16
+legend_text = 14
+legend_title = 14
+plot_title = 18
+coord_err = c(0, .31)
+coord_d = c(2.2, 3.8)
+coord_rt = c(280, 600)
+```
+
 ## BL1 -----------------------
 ### error
 ```{r}
 # plot error BL1
 plot_err_bl1 <- ggplot(dat_topx_bl1, 
                         aes(x= cttype, y=error, group = group)) + 
-  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_25, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "Error Rates at Visit 1", 
-       y = "Error Rate", x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(0.05, .35)) +
+       y = "Error Rates", x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = coord_err) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                    labels=c("Ctl", "EP")) + 
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(),
         panel.background = element_blank(), 
         axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_err_bl1
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_BL1.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_BL1.pdf"),
 #        plot_err_bl1, width = 6, height = 4)
 
 ### LMER error BL1
@@ -360,34 +423,48 @@ print(emmeans(mod_err_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
 plot_dprime_bl1 <- ggplot(dat_dprime_bl1_long, 
                           aes(x= dprime_type, y=dprime, 
                               group = group)) + 
-  stat_summary(fun="mean", geom="line", 
+  stat_summary(fun="mean", 
+               geom="line", 
                aes(color = group),
-               linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group),
-               size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
-               width = 0.05, size = 1) + 
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_15, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "D-prime (d') at Visit 1", 
        y = "d' Value", 
        x = "d' Type", color = "Group") +
-  coord_cartesian(ylim = c(2.0, 3.5)) +
+  coord_cartesian(ylim = coord_d) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
   scale_x_discrete(labels = c("d_context" = "d' Context", 
                               "d_expect" = "d' Expectancy")) +
-  scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
-                     labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
+  scale_y_continuous(breaks = c(seq(2.2, 3.8, by = 0.2)),
+                     labels = c("2.2","", "2.6", "", "3.0",
+                                "", "3.4", "", "3.8")) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.background = element_blank(),
         axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_dprime_bl1
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL1.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL1.pdf"),
 #        plot_dprime_bl1, width = 6, height = 4)
 
 #### LMER d' BL1 -----
@@ -407,28 +484,43 @@ print(emmeans(mod_d_bl1, list(pairwise ~ dprime_type|group), adjust = "mvt"))
 # plot RT BL1
 plot_rt_bl1 <- ggplot(dat_topx_bl1, 
                        aes(x= cttype, y=rt_mdn, group = group)) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_25, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "Reaction Times (RT) at Visit 1", 
        y = "Median Correct RT (ms)", 
        x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(280, 600)) +
+  coord_cartesian(ylim = coord_rt) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_rt_bl1
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_BL1.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_BL1.pdf"),
 #        plot_rt_bl1, width = 6, height = 4)
 
 ### LMER RT BL1 
@@ -449,26 +541,42 @@ print(emmeans(mod_rt_bl1, list(pairwise ~ cttype|group), adjust = "mvt"))
 # plot error BL2
 plot_err_bl2 <- ggplot(dat_topx_bl2, 
                         aes(x= cttype, y=error, group = group)) + 
-  stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) +
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_25, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "Error Rates at Visit 2", 
-       y = "Error Rate", x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(0.05, .35)) +
+       y = "Error Rates", x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = coord_err) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                    labels=c("Ctl", "EP")) + 
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(),
         panel.background = element_blank(), 
         axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_err_bl2
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_BL2.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_BL2.pdf"),
 #        plot_err_bl2, width = 6, height = 4)
 
 ### LMER Error BL2
@@ -489,34 +597,48 @@ print(emmeans(mod_err_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
 plot_dprime_bl2 <- ggplot(dat_dprime_bl2_long, 
                           aes(x= dprime_type, y=dprime, 
                               group = group)) + 
-  stat_summary(fun="mean", geom="line", 
+  stat_summary(fun="mean", 
+               geom="line", 
                aes(color = group),
-               linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group),
-               size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
-               width = 0.05, size = 1) + 
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_15, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "D-prime (d') at Visit 2", 
        y = "d' Value", 
        x = "d' Type", color = "Group") +
-  coord_cartesian(ylim = c(2.0, 3.5)) +
+  coord_cartesian(ylim = coord_d) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
   scale_x_discrete(labels = c("d_context" = "d' Context", 
                               "d_expect" = "d' Expectancy")) +
-  scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
-                     labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
+  scale_y_continuous(breaks = c(seq(2.2, 3.8, by = 0.2)),
+                     labels = c("2.2","", "2.6", "", "3.0",
+                                "", "3.4", "", "3.8")) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_dprime_bl2
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL2.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_BL2.pdf"),
 #        plot_dprime_bl2, width = 6, height = 4)
 
 #### LMER d' BL2 -----
@@ -536,28 +658,43 @@ print(emmeans(mod_d_bl2, list(pairwise ~ dprime_type|group), adjust = "mvt"))
 # plot RT BL2
 plot_rt_bl2 <- ggplot(dat_topx_bl2, 
                        aes(x= cttype, y=rt_mdn, group = group)) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_25, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "Reaction Times (RT) at Visit 2", 
        y = "Median Correct RT (ms)", 
        x = "Trial Type", color = "Group") +
-  coord_cartesian(ylim = c(280, 600)) +
+  coord_cartesian(ylim = coord_rt) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.background = element_blank(),
         axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_rt_bl2
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_BL2.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_BL2.pdf"),
 #        plot_rt_bl2, width = 6, height = 4)
 
 ### LMER RT BL2
@@ -572,22 +709,226 @@ print(emmeans(mod_rt_bl2, list(pairwise ~ cttype|group), adjust = "mvt"))
 ##check_model(mod_rt_bl2)
 ```
 
+## BL1+BL2 Comb ----------------
+### error
+```{r}
+# plot error BL1+BL2 Combined (w/o visit)
+plot_err_comb <- ggplot(dat_topx_all,
+                        aes(x= cttype, y=error, group = group)) +
+  # # if wanting to add a dot per ppt
+  #   geom_point(aes(color = group),
+  #              position = position_jitterdodge(
+  #     jitter.width = 0.05,
+  #     dodge.width = dodge_width),
+  #            alpha = 0.4, size = 1) +
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group), #linetype = group),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_25, size = line_width,
+               position = position_dodge(width = dodge_width)) +
+  labs(title = "Error Rates",
+       y = "Error Rates", x = "Trial Type") +
+  coord_cartesian(ylim = coord_err) +
+  scale_color_manual(name = "Group",
+                     values=c("Control" = "#2C737F", 
+                              "Patient" = "#AA8829"),
+                   labels=c("Ctl", "EP")) +
+   # scale_linetype_manual(name = "Group",
+   #                       values = c("Control" = "solid", 
+   #                                  "Patient" = "dashed"), 
+   #                      labels = c("Ctl", "EP")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
+plot_err_comb
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Comb.pdf"),
+#        plot_err_comb, width = 6, height = 4)
+
+### LMER Error BL1+BL2 Combined (w/o visit)
+mod_err_comb <- lmer(error ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav)
+anova(mod_err_comb, type = 3)
+summary(mod_err_comb)
+r.squaredGLMM(mod_err_comb)
+print(emmeans(mod_err_comb, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_err_comb, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_err_comb, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_err_comb, list(pairwise ~ cttype|group), adjust = "mvt"))
+#check_model(mod_err_comb)
+```
+
+### d'
+```{r}
+# plot d' BL1+BL2 Comb (w/o visit)
+plot_dprime_comb <- ggplot(dat_dprime_all_long, 
+                          aes(x= dprime_type, y=dprime, 
+                              group = group)) + 
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_15, size = line_width,
+               position = position_dodge(width = dodge_width)) +
+  labs(title = "D-primes (d')", 
+       y = "d' Value", 
+       x = "d' Type", color = "Group") +
+  coord_cartesian(ylim = coord_d) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  scale_x_discrete(labels = c("d_context" = "d'-context", 
+                              "d_expect" = "d'-expectancy")) +
+  scale_y_continuous(breaks = c(seq(2.2, 3.8, by = 0.2)),
+                     labels = c("2.2","", "2.6", "", "3.0",
+                                "", "3.4", "", "3.8")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
+plot_dprime_comb
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Comb.pdf"),
+#        plot_dprime_comb, width = 6, height = 4)
+
+#### LMER d' BL1+BL2 Combined (w/o visit)
+mod_d_comb <- lmer(dprime ~ group * dprime_type + age + (1|subj_idx), data = dat_dprime_all_long)
+anova(mod_d_comb, type = 3)
+r.squaredGLMM(mod_d_comb)
+print(emmeans(mod_d_comb, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_d_comb, list(pairwise ~ dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_comb, list(pairwise ~ group|dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_comb, list(pairwise ~ dprime_type|group), adjust = "mvt"))
+#check_model(mod_d_comb)
+
+# exploring with t-tests
+# t.test(d_context ~ group, dat_dprime_all)
+# t.test(dat_dprime_all$group_n, dat_dprime_all$d_context, paired=FALSE, alternative = "two.sided")
+# t.test(d_expect ~ group, dat_dprime_all)
+# t.test(dat_dprime_all$group_n, dat_dprime_all$d_expect, paired=FALSE, alternative = "two.sided")
+```
+
+
+### RT
+```{r}
+# plot RT BL1+BL2 comb (w/o visit)
+plot_rt_comb <- ggplot(dat_topx_all, 
+                       aes(x= cttype, y=rt_mdn, group = group)) + 
+   stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_25, size = line_width,
+               position = position_dodge(width = dodge_width)) +
+  labs(title = "Reaction Times (RT)", 
+       y = "Median Correct RT (ms)", 
+       x = "Trial Type", color = "Group") +
+  coord_cartesian(ylim = coord_rt) +
+  scale_color_manual(values=c("#2C737F", "#AA8829"),
+                     labels=c("Ctl", "EP")) + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
+plot_rt_comb
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Comb.pdf"),
+#        plot_rt_comb, width = 6, height = 4)
+
+### LMER RT BL1+BL2 Comb (w/o visit)
+mod_rt_comb <- lmer(rt_mdn ~ group * cttype + age + (1|subj_idx), data = dat_topx_behav)
+anova(mod_rt_comb, type = 3)
+summary(mod_rt_comb)
+r.squaredGLMM(mod_rt_comb)
+print(emmeans(mod_rt_comb, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_rt_comb, list(pairwise ~ cttype), adjust = "mvt"))
+print(emmeans(mod_rt_comb, list(pairwise ~ group|cttype), adjust = "mvt"))
+print(emmeans(mod_rt_comb, list(pairwise ~ cttype|group), adjust = "mvt"))
+#check_model(mod_rt_comb)
+```
+
+
 ## BL1+BL2 sep ----------
 ### error
 ```{r}
 ### plot error BL1+BL2 sep (w/ visit)----------
 plot_err_sep <- ggplot(dat_topx_all, 
-                        aes(x= cttype, y=error, group = interaction(group,visit))) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group, linetype = visit), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
+                        aes(x= cttype, y=error, 
+                            group = interaction(group,visit))) +
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group, linetype = visit),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_5, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "Error Rates", 
-       y = "Error Rate", 
+       y = "Error Rates", 
        x = "Trial Type", 
        color = "Group", linetype = "Visit") +
-  coord_cartesian(ylim = c(0.05, .35)) +
+  coord_cartesian(ylim = coord_err) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
   scale_linetype_manual(values = c("solid", "dotted"), 
@@ -595,14 +936,19 @@ plot_err_sep <- ggplot(dat_topx_all,
   theme(panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank(),
         panel.background = element_blank(), 
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_err_sep
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Sep.pdf"),
 #        plot_err_sep, width = 6, height = 4)
 
 ### LMER error BL1+BL2 Sep (w/ visit) -----------
@@ -612,6 +958,9 @@ anova_err_sep
 format_lmer_anova(anova_err_sep)
 
 print(summary(mod_err_sep))
+
+# Marginal \RsqxGLMM represents the variance explained by the fixed effects
+# Conditional \RsqxGLMM represents the variance explained by the entire model, including both fixed and random effects
 r.squaredGLMM(mod_err_sep)
 print(emmeans(mod_err_sep, list(pairwise ~ group), adjust = "mvt"))
 print(emmeans(mod_err_sep, list(pairwise ~ cttype), adjust = "mvt"))
@@ -622,6 +971,12 @@ print(emmeans(mod_err_sep, list(pairwise ~ group|visit), adjust = "mvt"))
 print(emmeans(mod_err_sep, list(pairwise ~ visit|group), adjust = "mvt"))
 print(emmeans(mod_err_sep, list(pairwise ~ cttype|visit), adjust = "mvt"))
 print(emmeans(mod_err_sep, list(pairwise ~ visit|cttype), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ group|cttype|visit), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ group|visit|cttype), adjust = "mvt"))
+print(emmeans(mod_err_sep, list(pairwise ~ visit|cttype|group), adjust = "mvt"))
+
+
+
 ##check_model(mod_err_sep)
 
 ```
@@ -632,39 +987,50 @@ print(emmeans(mod_err_sep, list(pairwise ~ visit|cttype), adjust = "mvt"))
 plot_dprime_sep <- ggplot(dat_dprime_all_long, 
                              aes(x= dprime_type, y=dprime, 
                                  group = interaction(group,visit))) + 
-  stat_summary(fun="mean", geom="line", 
+  stat_summary(fun="mean", 
+               geom="line", 
                aes(color = group, linetype = visit),
-               position = position_dodge(width = 0.1),
-               linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group),
-               position = position_dodge(width = 0.1), 
-               size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group),
-               position = position_dodge(width = 0.1),
-               width = 0.2, size = 1) + 
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_25, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "D-primes (d')", 
        y = "d' Value", 
        x = "d' Type", color = "Group", linetype = "Visit") +
-  coord_cartesian(ylim = c(2.0, 3.5)) +
+  coord_cartesian(ylim = coord_d) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
   scale_linetype_manual(values = c("solid", "dotted"), 
                         labels = c("Visit 1", "Visit 2")) + 
   scale_x_discrete(labels = c("d_context" = "d'-context", 
                               "d_expect" = "d'-expectancy")) +
-  scale_y_continuous(breaks = c(seq(2.0, 3.5, by = 0.25)),
-                     labels = c("2.0","", "2.5", "", "3.0", "", "3.5")) +
+  scale_y_continuous(breaks = c(seq(2.2, 3.8, by = 0.2)),
+                     labels = c("2.2","", "2.6", "", "3.0",
+                                "", "3.4", "", "3.8")) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_dprime_sep
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Sep.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Dprime_Sep.pdf"),
 #        plot_dprime_sep, width = 6, height = 4)
 
 #### LMER d' BL1+BL2 sep (w/ visit)-----
@@ -681,8 +1047,44 @@ print(emmeans(mod_d_sep, list(pairwise ~ group|dprime_type), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ dprime_type|group), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ dprime_type|visit), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ visit|dprime_type), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ group|visit), adjust = "mvt"))
+print(emmeans(mod_d_sep, list(pairwise ~ visit|group), adjust = "mvt"))
 print(emmeans(mod_d_sep, list(pairwise ~ group|dprime_type|visit), adjust = "mvt"))
 #check_model(mod_d_sep)
+```
+
+#### d-context only
+```{r}
+mod_d_con <- lmer(d_context ~ group * visit + age + (1|subj_idx), data = dat_dprime_all)
+anova_d_con <- anova(mod_d_con, type = 3)
+anova_d_con
+format_lmer_anova(anova_d_con)
+
+r.squaredGLMM(mod_d_con)
+print(emmeans(mod_d_con, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_d_con, list(pairwise ~ visit), adjust = "mvt"))
+print(emmeans(mod_d_con, list(pairwise ~ group|visit), adjust = "mvt"))
+```
+
+#### d-expectancy only
+```{r}
+mod_d_exp <- lmer(d_expect ~ group * visit + age + (1|subj_idx), data = dat_dprime_all)
+anova_d_exp <- anova(mod_d_exp, type = 3)
+anova_d_exp
+format_lmer_anova(anova_d_exp)
+
+r.squaredGLMM(mod_d_exp)
+print(emmeans(mod_d_exp, list(pairwise ~ group), adjust = "mvt"))
+print(emmeans(mod_d_exp, list(pairwise ~ visit), adjust = "mvt"))
+print(emmeans(mod_d_exp, list(pairwise ~ group|visit), adjust = "mvt"))
+
+dat_dprime_all_bl1 <- dat_dprime_all %>% 
+  filter(visit == "BL1")
+t.test(d_expect ~ age_split, data = dat_dprime_all_bl1)
+
+dat_dprime_all_bl2 <- dat_dprime_all %>% 
+  filter(visit == "BL2")
+t.test(d_expect ~ age_split, data = dat_dprime_all_bl2)
 ```
 
 ### RT
@@ -691,15 +1093,25 @@ print(emmeans(mod_d_sep, list(pairwise ~ group|dprime_type|visit), adjust = "mvt
 plot_rt_sep <- ggplot(dat_topx_all, 
                        aes(x= cttype, y=rt_mdn, 
                            group = interaction(group,visit))) + 
-  stat_summary(fun="mean", geom="line", 
-               aes(color = group, linetype = visit), linewidth = 1.5) + 
-  stat_summary(fun="mean", geom="point", aes(color = group), size = 3) + 
-  stat_summary(fun.data = mean_se, geom = "errorbar", aes(color = group), 
-               width = 0.1, size = 1) + 
+  stat_summary(fun="mean", 
+               geom="line", 
+               aes(color = group, linetype = visit),
+               linewidth = line_width,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun="mean",
+               geom="point",
+               aes(color = group),
+               size = dot_size,
+               position = position_dodge(width = dodge_width)) +
+  stat_summary(fun.data = mean_se,
+               geom = "errorbar",
+               aes(color = group),
+               width = error_width_5, size = line_width,
+               position = position_dodge(width = dodge_width)) +
   labs(title = "Reaction Times (RT)", 
        y = "Median Correct RT (ms)", 
        x = "Trial Type", color = "Group", linetype = "Visit") +
-  coord_cartesian(ylim = c(280, 600)) +
+  coord_cartesian(ylim = coord_rt) +
   scale_color_manual(values=c("#2C737F", "#AA8829"),
                      labels=c("Ctl", "EP")) + 
   scale_linetype_manual(values = c("solid", "dotted"), 
@@ -707,14 +1119,19 @@ plot_rt_sep <- ggplot(dat_topx_all,
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.background = element_blank(),
-        axis.line = element_line(colour = "black"), 
-        axis.text = element_text(face="bold", size = 16),
-        axis.title = element_text(face="bold", size = 20),
-        legend.text = element_text(face="bold", size = 14),
-        legend.title = element_text(face = "bold", size = 16),
-        plot.title = element_text(face = "bold", size = 22))
+        axis.line = element_line(colour = "black"),
+        axis.text = element_text(face="bold", 
+                                 size = axis_text),
+        axis.title = element_text(face="bold", 
+                                  size = axis_title),
+        legend.text = element_text(face="bold", 
+                                   size = legend_text),
+        legend.title = element_text(face = "bold", 
+                                    size = legend_title),
+        plot.title = element_text(face = "bold", 
+                                  size = plot_title))
 plot_rt_sep
-# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.png"),
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Sep.pdf"),
 #        plot_rt_sep, width = 6, height = 4)
 
 ### LMER RT BL1+BL2 sep (w/ visit) -----------
@@ -913,7 +1330,7 @@ lmer_check <- function(model, title_lab) {
  # mod_check_plots <- #check_model(model)
   #print(mod_check_plots)
   #png(paste0("graphs/model_check/", format(Sys.Date(), "%Y%m%d"),
-    #         "_ModelCheck_", title_lab, ".png"),
+    #         "_ModelCheck_", title_lab, ".pdf"),
     #  width = 500, height = 600)
   #plot(mod_check_plots)
   #dev.off()
@@ -931,10 +1348,22 @@ plot_bl <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
   dat_dummy <- dat %>%
     mutate(mean = if_else(cttype == "AY" & parameter == "v", -1 * mean, mean))
   plot <- ggplot(dat_dummy, aes(x= cttype, y=mean, group = group)) + 
-    stat_summary(fun="mean", geom="line", aes(color = group), linewidth = 1.5) + 
-    stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
-    stat_summary(fun.data = mean_se, geom = "errorbar", 
-                 aes(color = group), width = 0.1, size = 1) + 
+    stat_summary(fun="mean", 
+                 geom="line", 
+                 aes(color = group), 
+                 linewidth = line_width,
+                 position = position_dodge(width = dodge_width)) + 
+    stat_summary(fun="mean", 
+                 geom="point", 
+                 aes(color = group), 
+                 size = dot_size,
+                 position = position_dodge(width = dodge_width)) +
+    stat_summary(fun.data = mean_se, 
+                 geom = "errorbar", 
+                 aes(color = group), 
+                 width = error_width_25,
+                 size = line_width,
+                 position = position_dodge(width = dodge_width)) + 
     labs(title = title_lab, y = param_lab, 
          x = "Trial Type", color = "Group") +
     coord_cartesian(ylim = c(ymin, ymax)) +
@@ -944,14 +1373,19 @@ plot_bl <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
           panel.grid.minor = element_blank(),
           panel.background = element_blank(), 
           axis.line = element_line(colour = "black"), 
-          axis.text = element_text(face="bold", size = 16),
-          axis.title = element_text(face="bold", size = 20),
-          legend.text = element_text(face="bold", size = 14),
-          legend.title = element_text(face = "bold", size = 16),
-          plot.title = element_text(face = "bold", size = 22))
+          axis.text = element_text(face="bold", 
+                                   size = axis_text),
+          axis.title = element_text(face="bold",
+                                   size = axis_title),
+          legend.text = element_text(face="bold",
+                                   size = legend_text),
+          legend.title = element_text(face = "bold",
+                                   size = legend_title),
+          plot.title = element_text(face = "bold",
+                                   size = plot_title))
   print(plot)
-  ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
-         plot, width = 6, height = 4)
+  # ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".pdf"),
+  #        plot, width = 6, height = 4)
 }
 
 # plot multiple visits (BL1 and BL2)
@@ -961,11 +1395,19 @@ plot_bl_sep <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
   plot <- ggplot(dat_dummy, aes(x= cttype, y=mean, 
                    group = interaction(group,visit))) + 
     stat_summary(fun="mean", geom="line", 
-                 aes(color = group, linetype = visit), size = 1.5) + 
-    stat_summary(fun="mean", geom="point", aes(color = group), size = 3) +
-    stat_summary(fun.data = mean_se, geom = "errorbar", 
-                 aes(color = group), width = 0.1, 
-                 size = 1) + 
+                 aes(color = group, linetype = visit), 
+                 size = line_width,
+                 position = position_dodge(width = dodge_width)) + 
+    stat_summary(fun="mean", 
+                 geom="point", aes(color = group), 
+                 size = dot_size,
+                 position = position_dodge(width = dodge_width)) +
+    stat_summary(fun.data = mean_se, 
+                 geom = "errorbar", 
+                 aes(color = group), 
+                 width = error_width_5, 
+                 size = line_width,
+                 position = position_dodge(width = dodge_width)) + 
     labs(title = title_lab, y = param_lab, 
          x = "Trial Type", color = "Group", linetype = "Visit") +
     coord_cartesian(ylim = c(ymin, ymax)) +
@@ -977,14 +1419,19 @@ plot_bl_sep <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
           panel.grid.minor = element_blank(),
           panel.background = element_blank(), 
           axis.line = element_line(colour = "black"), 
-          axis.text = element_text(face="bold", size = 16),
-          axis.title = element_text(face="bold", size = 20),
-          legend.text = element_text(face="bold", size = 14),
-          legend.title = element_text(face = "bold", size = 16),
-          plot.title = element_text(face = "bold", size = 22))
+          axis.text = element_text(face="bold",
+                                   size = axis_text),
+          axis.title = element_text(face="bold",
+                                   size = axis_title),
+          legend.text = element_text(face="bold",
+                                   size = legend_text),
+          legend.title = element_text(face = "bold",
+                                   size = legend_title),
+          plot.title = element_text(face = "bold",
+                                   size = plot_title))
   print(plot)
-  ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
-         plot, width = 6, height = 4)
+  # ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".pdf"),
+  #        plot, width = 6, height = 4)
 }
 ```
 
@@ -1320,7 +1767,7 @@ plot_err_aff <- ggplot(dat_topx_behav,
        y = "Error Rate", 
        x = "Trial Type", 
        color = "Group", linetype = "Visit") +
-  coord_cartesian(ylim = c(0.05, .4)) +
+  coord_cartesian(ylim = c(0, .4)) +
   scale_color_manual(values=c("#2C737F", "#AA8829", "#C44E52"),
                      labels=c("Ctl", "Non-Aff", "Aff")) + 
   scale_linetype_manual(values = c("solid", "dotted", "dashed"), 
@@ -1335,8 +1782,8 @@ plot_err_aff <- ggplot(dat_topx_behav,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 print(plot_err_aff)
-ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Aff.png"),
-         plot_err_aff, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_Error_Aff.pdf"),
+#          plot_err_aff, width = 6, height = 4)
 ```
 
 ## RT
@@ -1377,8 +1824,8 @@ plot_rt_aff <- ggplot(dat_topx_behav,
         legend.title = element_text(face = "bold", size = 16),
         plot.title = element_text(face = "bold", size = 22))
 print(plot_rt_aff)
-ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Aff.png"),
-         plot_rt_aff, width = 6, height = 4)
+# ggsave(paste0("graphs/topx/", format(Sys.Date(), "%Y%m%d"), "_RT_Aff.pdf"),
+#          plot_rt_aff, width = 6, height = 4)
 
 ```
 
@@ -1445,8 +1892,8 @@ plot_bl_aff <- function(dat, title_lab, param_lab, file_lab, ymin, ymax) {
           legend.title = element_text(face = "bold", size = 16),
           plot.title = element_text(face = "bold", size = 22))
   print(plot)
-  ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".png"),
-         plot, width = 6, height = 4)
+  # ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", file_lab, ".pdf"),
+  #        plot, width = 6, height = 4)
 }
 ```
 
@@ -1475,100 +1922,10 @@ lmer_bl_aff(z_dat_all, "mod_z_aff", posthoc = TRUE)
 ```
 
 # DDM CORRELATIONS
-# correlations - 14 vars
-## comb
+## Calculate DDM intercepts
 ```{r}
-# filter ddm data (long form) to only include ddm variables, for correlation matrix
-dat_cor_comb <- dat_ddm_all_long %>% 
-  select(-c(participant_id, visit))
+# read in separate stats for bl1 and bl2, merge them into one dataframe with intercepts
 
-# run the correlations and rename variables
-dat_cor_comb <- cor(dat_cor_comb)
-colnames(dat_cor_comb) <- c("v-AX", "v-AY", "v-BX", "v-BY",
-                           "a-AX", "a-AY", "a-BX", "a-BY",
-                           "t-AX", "t-AY", "t-BX", "t-BY",
-                           "w-A", "w-B")
-rownames(dat_cor_comb) <- c("v-AX", "v-AY", "v-BX", "v-BY",
-                           "a-AX", "a-AY", "a-BX", "a-BY",
-                           "t-AX", "t-AY", "t-BX", "t-BY",
-                           "w-A", "w-B")
-
-# plot a correlation matrix
-corrplot(dat_cor_comb, 
-         method = "color", 
-         addCoef.col = 'grey45',
-         tl.cex = 0.65,  # Axis label text size
-         tl.col = "black", # Axis label text color
-         number.cex = 0.55,  # Coefficient text size
-         title = "Parameter Correlations (Combined Visit 1+2)", # title
-         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
-```
-
-## bl1
-```{r}
-# filter data to BL1 DDM variables only
-dat_ddm_bl1_long <- dat_ddm_all_long %>% 
-  filter(visit == "BL1")
-dat_cor_bl1 <- dat_ddm_bl1_long %>% 
-  select(-c(participant_id, visit))
-
-# run correlation and rename variables
-dat_cor_bl1 <- cor(dat_cor_bl1)
-colnames(dat_cor_bl1) <- c("v-AX", "v-AY", "v-BX", "v-BY",
-                           "a-AX", "a-AY", "a-BX", "a-BY",
-                           "t-AX", "t-AY", "t-BX", "t-BY",
-                           "w-A", "w-B")
-rownames(dat_cor_bl1) <- c("v-AX", "v-AY", "v-BX", "v-BY",
-                           "a-AX", "a-AY", "a-BX", "a-BY",
-                           "t-AX", "t-AY", "t-BX", "t-BY",
-                           "w-A", "w-B")
-
-# plot the correlation matrix
-corrplot(dat_cor_bl1, 
-         method = "color", 
-         addCoef.col = 'grey45',
-         tl.cex = 0.65,  # Axis label text size
-         tl.col = "black", # Axis label text color
-         number.cex = 0.55,  # Coefficient text size
-         title = "Parameter Correlations at Visit 1", # title
-         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
-  
-```
-
-## bl2
-```{r}
-# # filter data to BL2 DDM variables only
-dat_ddm_bl2_long <- dat_ddm_all_long %>% 
-  filter(visit == "BL2")
-dat_cor_bl2 <- dat_ddm_bl2_long %>% 
-  select(-c(participant_id, visit))
-
-# run correlation and rename variables
-dat_cor_bl2 <- cor(dat_cor_bl2)
-colnames(dat_cor_bl2) <- c("v-AX", "v-AY", "v-BX", "v-BY",
-                           "a-AX", "a-AY", "a-BX", "a-BY",
-                           "t-AX", "t-AY", "t-BX", "t-BY",
-                           "w-A", "w-B")
-rownames(dat_cor_bl2) <- c("v-AX", "v-AY", "v-BX", "v-BY",
-                           "a-AX", "a-AY", "a-BX", "a-BY",
-                           "t-AX", "t-AY", "t-BX", "t-BY",
-                           "w-A", "w-B")
-
-# plot the correlation matrix
-corrplot(dat_cor_bl2, 
-         method = "color", 
-         addCoef.col = 'grey45',
-         tl.cex = 0.65,  # Axis label text size
-         tl.col = "black", # Axis label text color
-         number.cex = 0.55,  # Coefficient text size
-         title = "Parameter Correlations at Visit 1", # title
-         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
-```
-
-# correlations - 4 vars
-## calculate intercepts
-```{r}
-# read in separate stats for bl1 and bl2, merge them - short form (thanks ChatGPT)
 # Custom function to read, select, and join datasets
 process_data_intc <- function(block, types, column_mappings) {
   datasets <- lapply(types, function(type) {
@@ -1596,49 +1953,144 @@ types_intc <- names(column_mappings_intc)
 dat_ddm_bl1_intc <- process_data_intc("bl1", types_intc, column_mappings_intc)
 dat_ddm_bl2_intc <- process_data_intc("bl2", types_intc, column_mappings_intc)
 
+# rename participant_id to subj_idx
+colnames(dat_ddm_bl1_intc)[1] <- "subj_idx"
+colnames(dat_ddm_bl2_intc)[1] <- "subj_idx"
 
 # Filter to retain only common participant_ids
-common_ids_intc <- intersect(dat_ddm_bl1_intc$participant_id, dat_ddm_bl2_intc$participant_id)
-dat_ddm_bl1_intc <- filter(dat_ddm_bl1_intc, participant_id %in% common_ids)
-dat_ddm_bl2_intc <- filter(dat_ddm_bl2_intc, participant_id %in% common_ids)
+common_ids_intc <- intersect(dat_ddm_bl1_intc$subj_idx, dat_ddm_bl2_intc$subj_idx)
+dat_ddm_bl1_intc <- filter(dat_ddm_bl1_intc, subj_idx %in% common_ids_intc)
+dat_ddm_bl2_intc <- filter(dat_ddm_bl2_intc, subj_idx %in% common_ids_intc)
+
+# filter by TOPX performance criterion
+dat_ddm_bl1_intc <- filter(dat_ddm_bl1_intc, !subj_idx %in% sub_excl_opt2)
+dat_ddm_bl2_intc <- filter(dat_ddm_bl2_intc, !subj_idx %in% sub_excl_opt2)
+
+# add vars for group+pt intercepts (not accounting for trial type)
+ddm_sum <- function(dat) {
+  dat %>%
+   mutate(v_sum = v_intc + v_ppt, 
+          .after = v_ppt) %>%
+    mutate(a_sum = a_intc + a_ppt, 
+           .after = a_ppt) %>%
+    mutate(t_sum = t_intc + t_ppt, 
+           .after = t_ppt) %>%
+    mutate(z_sum = z_intc + z_ppt, 
+           .after = z_ppt)
+}
+
+dat_ddm_bl1_intc <- ddm_sum(dat_ddm_bl1_intc)
+dat_ddm_bl2_intc <- ddm_sum(dat_ddm_bl2_intc)
 
 # Combine both datasets
 dat_ddm_comb_intc <- bind_rows(dat_ddm_bl1_intc, dat_ddm_bl2_intc)
-colnames(dat_ddm_comb_intc)[1] <- "subj_idx"
-
-# add vars for group+pt intercepts (not accounting for trial type)
-dat_ddm_bl1_intc <- dat_ddm_bl1_intc %>% 
-  mutate(v_sum = v_intc + v_ppt, .after = v_ppt) %>% 
-  mutate(a_sum = a_intc + a_ppt, .after = a_ppt) %>% 
-  mutate(t_sum = t_intc + t_ppt, .after = t_ppt) %>% 
-  mutate(z_sum = z_intc + z_ppt, .after = z_ppt)
-
-dat_ddm_bl2_intc <- dat_ddm_bl2_intc %>% 
-  mutate(v_sum = v_intc + v_ppt, .after = v_ppt) %>% 
-  mutate(a_sum = a_intc + a_ppt, .after = a_ppt) %>% 
-  mutate(t_sum = t_intc + t_ppt, .after = t_ppt) %>% 
-  mutate(z_sum = z_intc + z_ppt, .after = z_ppt)
-
-dat_ddm_comb_intc <- dat_ddm_comb_intc %>% 
-  mutate(v_sum = v_intc + v_ppt, .after = v_ppt) %>% 
-  mutate(a_sum = a_intc + a_ppt, .after = a_ppt) %>% 
-  mutate(t_sum = t_intc + t_ppt, .after = t_ppt) %>% 
-  mutate(z_sum = z_intc + z_ppt, .after = z_ppt)
 ```
 
-## BL1+BL2 Comb
+## Cor matrix for 14-DDM
+### BL1+BL2 Comb
+```{r}
+# filter ddm data (wide form) to only include 14 ddm variables, for correlation matrix
+cor_ddm14_comb <- dat_ddm_all_wide %>% 
+  select(-c(subj_idx, visit))
+
+# run the correlations and rename variables
+cor_ddm14_comb <- cor(cor_ddm14_comb)
+colnames(cor_ddm14_comb) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+rownames(cor_ddm14_comb) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+
+# plot a correlation matrix
+corrplot(cor_ddm14_comb, 
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 0.65,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 0.55,  # Coefficient text size
+         title = "Parameter Correlations (Combined Visit 1+2)", # title
+         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
+```
+
+### BL1
+```{r}
+# filter data to BL1 DDM variables only
+dat_ddm_bl1_wide <- dat_ddm_all_wide %>% 
+  filter(visit == "BL1")
+cor_ddm14_bl1 <- dat_ddm_bl1_wide %>% 
+  select(-c(subj_idx, visit))
+
+# run correlation and rename variables
+cor_ddm14_bl1 <- cor(cor_ddm14_bl1)
+colnames(cor_ddm14_bl1) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+rownames(cor_ddm14_bl1) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+
+# plot the correlation matrix
+corrplot(cor_ddm14_bl1, 
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 0.65,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 0.55,  # Coefficient text size
+         title = "Parameter Correlations at Visit 1", # title
+         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
+  
+```
+
+### BL2
+```{r}
+# # filter data to BL2 DDM variables only
+dat_ddm_bl2_wide <- dat_ddm_all_wide %>% 
+  filter(visit == "BL2")
+cor_ddm14_bl2 <- dat_ddm_bl2_wide %>% 
+  select(-c(subj_idx, visit))
+
+# run correlation and rename variables
+cor_ddm14_bl2 <- cor(cor_ddm14_bl2)
+colnames(cor_ddm14_bl2) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+rownames(cor_ddm14_bl2) <- c("v-AX", "v-AY", "v-BX", "v-BY",
+                           "a-AX", "a-AY", "a-BX", "a-BY",
+                           "t-AX", "t-AY", "t-BX", "t-BY",
+                           "w-A", "w-B")
+
+# plot the correlation matrix
+corrplot(cor_ddm14_bl2, 
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 0.65,  # Axis label text size
+         tl.col = "black", # Axis label text color
+         number.cex = 0.55,  # Coefficient text size
+         title = "Parameter Correlations at Visit 1", # title
+         mar = c(.5, .5, 1, .5))  # Adjust margins for title spacing
+```
+
+## Cor matrix for 4-DDM
+
+### BL1+BL2 Comb
 ```{r}
 # filter data, create vars for group+pt intercepts (not accounting for trial type)
-dat_cor_comb_intc <- dat_ddm_comb_intc %>% 
+cor_ddm4_comb <- dat_ddm_comb_intc %>% 
   select(v_sum, a_sum, t_sum, z_sum)
 
 # run correlations
-dat_cor_comb_intc <- cor(dat_cor_comb_intc)
-colnames(dat_cor_comb_intc) <- c("v", "a", "t", "w")
-rownames(dat_cor_comb_intc) <- c("v", "a", "t", "w")
+cor_ddm4_comb <- cor(cor_ddm4_comb)
+colnames(cor_ddm4_comb) <- c("v", "a", "t", "w")
+rownames(cor_ddm4_comb) <- c("v", "a", "t", "w")
 
 # plot the correlation matrix
-corrplot(dat_cor_comb_intc, 
+corrplot(cor_ddm4_comb, 
          method = "color", 
          addCoef.col = 'grey45',
          tl.cex = 1,  # Axis label text size
@@ -1648,19 +2100,19 @@ corrplot(dat_cor_comb_intc,
          mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
-## bl1
+### BL1
 ```{r}
 # filter data, create vars for group+pt intercepts (not accounting for trial type)
-dat_cor_bl1_intc <- dat_ddm_bl1_intc %>% 
+cor_ddm4_bl1 <- dat_ddm_bl1_intc %>% 
   select(v_sum, a_sum, t_sum, z_sum)
 
 # run correlations
-dat_cor_bl1_intc <- cor(dat_cor_bl1_intc)
-colnames(dat_cor_bl1_intc) <- c("v", "a", "t", "w")
-rownames(dat_cor_bl1_intc) <- c("v", "a", "t", "w")
+cor_ddm4_bl1 <- cor(cor_ddm4_bl1)
+colnames(cor_ddm4_bl1) <- c("v", "a", "t", "w")
+rownames(cor_ddm4_bl1) <- c("v", "a", "t", "w")
 
 # plot correlation matrix
-corrplot(dat_cor_bl1_intc,
+corrplot(cor_ddm4_bl1,
          method = "color", 
          addCoef.col = 'grey45',
          tl.cex = 1,  # Axis label text size
@@ -1670,19 +2122,19 @@ corrplot(dat_cor_bl1_intc,
          mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
-## bl2
+### BL2
 ```{r}
 # filter data, create vars for group+pt intercepts (not accounting for trial type)
-dat_cor_bl2_intc <- dat_ddm_bl2_intc %>% 
+cor_ddm4_bl2 <- dat_ddm_bl2_intc %>% 
   select(v_sum, a_sum, t_sum, z_sum)
 
 # run correlations
-dat_cor_bl2_intc <- cor(dat_cor_bl2_intc)
-colnames(dat_cor_bl2_intc) <- c("v", "a", "t", "w")
-rownames(dat_cor_bl2_intc) <- c("v", "a", "t", "w")
+cor_ddm4_bl2 <- cor(cor_ddm4_bl2)
+colnames(cor_ddm4_bl2) <- c("v", "a", "t", "w")
+rownames(cor_ddm4_bl2) <- c("v", "a", "t", "w")
 
 # plot correlation matrix
-corrplot(dat_cor_bl2_intc,
+corrplot(cor_ddm4_bl2,
          method = "color", 
          addCoef.col = 'grey45',
          tl.cex = 1,  # Axis label text size
@@ -1692,217 +2144,235 @@ corrplot(dat_cor_bl2_intc,
          mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
 ```
 
-# v-BPRS correlations BL1+BL2 Comb - pearson
+# DDM+BPRS CORRELATIONS
+## Merge DDM + BPRS data
 ```{r}
-# pearson
-# filter data to include drift rate only
-v_dat_all_pt = filter(dat_ddm_behav, parameter == 'v' & group == "Patient")
-
-# Run correlations between "mean" and multiple bprs variables, grouped by "cttype"
-cor_table_v <- v_dat_all_pt %>%
-  group_by(cttype) %>%
-  summarise(
-    cor_bprs_pos= cor(mean, bprs_pos_ws, use = "complete.obs"), # exclude NAs
-    cor_bprs_neg= cor(mean, bprs_neg_ws, use = "complete.obs"),
-    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs"),
-    .groups = "drop")
-print(cor_table_v)
-
-cor_matrix_v <- as.matrix(cor_table_v[, -1])
-colnames(cor_matrix_v) <- c("Positive", "Negative", "Disorganized")
-rownames(cor_matrix_v) <- c("v-AX", "v-AY", "v-BX", "v-BY")
-
-# plot correlation matrix
-corrplot(cor_matrix_v,
-         method = "color", 
-         addCoef.col = 'grey45',
-         tl.cex = 1,  # Axis label text size
-         tl.col = "black", # Axis label text color
-         number.cex = 1,  # Coefficient text size
-         title = "Correlations of Drift Rate and BPRS", # title
-         mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
-
-
-# Compute correlation coefficients and p-values within summarise()
-cor_table_v2 <- v_dat_all_pt %>%
-  group_by(cttype) %>%
-  summarise(
-    cor_bprs_pos = cor(mean, bprs_pos_ws, use = "complete.obs"),
-    p_bprs_pos = cor.test(mean, bprs_pos_ws)$p.value,  # Extract p-value
-    
-    cor_bprs_neg = cor(mean, bprs_neg_ws, use = "complete.obs"),
-    p_bprs_neg = cor.test(mean, bprs_neg_ws)$p.value,
-    
-    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs"),
-    p_bprs_disorg = cor.test(mean, bprs_disorg_ws)$p.value,
-    
-    .groups = "drop"
-  )
-
-# Print results
-print(cor_table_v2)
-
-```
-
-# v-BPRS correlations BL1+BL2 Comb - spearman
-```{r}
-# Run Spearman correlations between "mean" and multiple BPRS variables, grouped by "cttype"
-cor_table_v3 <- v_dat_all_pt %>%
-  group_by(cttype) %>%
-  summarise(
-    cor_bprs_pos = cor(mean, bprs_pos_ws, use = "complete.obs", method = "spearman"),
-    cor_bprs_neg = cor(mean, bprs_neg_ws, use = "complete.obs", method = "spearman"),
-    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs", method = "spearman"),
-    .groups = "drop"
-  )
-print(cor_table_v3)
-
-cor_matrix_v3 <- as.matrix(cor_table_v3[, -1])
-colnames(cor_matrix_v3) <- c("Positive", "Negative", "Disorganized")
-rownames(cor_matrix_v3) <- c("v-AX", "v-AY", "v-BX", "v-BY")
-
-# plot correlation matrix
-corrplot(cor_matrix_v3,
-         method = "color", 
-         addCoef.col = 'grey45',
-         tl.cex = 1,
-         tl.col = "black",
-         number.cex = 1,
-         title = "Spearman Correlations of Drift Rate and BPRS",
-         mar = c(1, 1, 2, 1))
-
-# Compute correlation coefficients and p-values using Spearman method
-cor_table_v4 <- v_dat_all_pt %>%
-  group_by(cttype) %>%
-  summarise(
-    cor_bprs_pos = cor(mean, bprs_pos_ws, use = "complete.obs", method = "spearman"),
-    p_bprs_pos = cor.test(mean, bprs_pos_ws, method = "spearman")$p.value,
-    
-    cor_bprs_neg = cor(mean, bprs_neg_ws, use = "complete.obs", method = "spearman"),
-    p_bprs_neg = cor.test(mean, bprs_neg_ws, method = "spearman")$p.value,
-    
-    cor_bprs_disorg = cor(mean, bprs_disorg_ws, use = "complete.obs", method = "spearman"),
-    p_bprs_disorg = cor.test(mean, bprs_disorg_ws, method = "spearman")$p.value,
-    
-    .groups = "drop"
-  )
-print(cor_table_v4)
-
-plot_drift_neg <- ggplot(v_dat_all_pt, aes(x=mean, y=bprs_negative, 
-                         color = cttype, shape = cttype)) +
-  geom_point() + 
-  geom_smooth(method=lm, se = FALSE) + 
-  scale_color_manual(values=c('#A280BD', '#3E8643', 
-                              '#AA8829', '#2C737F')) +
-  scale_shape_manual(values=c(15, 17, 18, 19)) + 
-  labs(color = "Trial Type", shape = "Trial Type",
-       x="Drift Rate", y = "Negative Symptoms") +
-  theme_classic()
-print(plot_drift_neg)
-# ggsave(paste0("graphs/ddm/", format(Sys.Date(), "%Y%m%d"), "_", "Drift_Rate_Neg_Sxs", ".png"), plot_drift_neg, width = 5, height = 3)
-
-# plot BL1 AY only
-v_dat_all_pt_bl1_AY <- v_dat_all_pt %>% filter(cttype == "AY" & visit == "BL1")
-ggplot(v_dat_all_pt_bl1_AY, aes(x=mean, y=bprs_negative)) + geom_point() + geom_smooth(method=lm)
-
-
-
-# Create plot with stars
-# create correlation and p-value matrices
-# cor_matrix_v4 <- as.matrix(cor_table_v4[, c("cor_bprs_pos", "cor_bprs_neg", "cor_bprs_disorg")])
-# p_matrix_v4 <- as.matrix(cor_table_v4[, c("p_bprs_pos", "p_bprs_neg", "p_bprs_disorg")])
-# # Set proper row and column names
-# rownames(cor_matrix_v4) <- cor_table_v4$cttype
-# rownames(p_matrix_v4) <- cor_table_v4$cttype
-# colnames(cor_matrix_v4) <- c("Positive", "Negative", "Disorganized")
-# colnames(p_matrix_v4) <- c("Positive", "Negative", "Disorganized")
-# 
-# corrplot(cor_matrix_v,
-#          method = "color",
-#          p.mat = p_matrix_v4,
-#          sig.level = c(0.001, 0.01, 0.05),  # thresholds for stars
-#          insig = "label_sig",
-#          pch.cex = 1.2,
-#          pch.col = "black",
-#          addCoef.col = "grey45",
-#          tl.col = "black",
-#          tl.cex = 1,
-#          number.cex = 1,
-#          title = "Spearman Correlations with Significance Stars",
-#          mar = c(1, 1, 2, 1))
-
-```
-#v-BPRS neg plot
-```{r}
-# merge intercepts with behav data
-dat_ddm_comb_intc <- merge(dat_ddm_comb_intc, dat_behav, by = "subj_idx", all.x = TRUE)
-dat_ddm_comb_intc_pt <- dat_ddm_comb_intc %>% 
+# merge intercepts with behav data,
+dat_ddm_bprs_bl1 <- merge(dat_ddm_bl1_intc, dat_behav, by = "subj_idx", all.x = TRUE)
+dat_ddm_bprs_bl1_pt <- dat_ddm_bprs_bl1 %>% 
   filter(group == "Patient")
-
-plot_drift_comb_neg <- ggplot(dat_ddm_comb_intc, aes(x=v_sum, y=bprs_negative)) +
-  geom_point(size = 1.5) + 
-  geom_smooth(method=lm, se = FALSE, color = "#A61936", size = 1.2) +
-  labs(x="Drift Rate (v)", y = "BPRS Negative Symptoms") +
-  theme_classic() +
-  theme(
-    axis.title = element_text(size = 16),   # axis label font size
-    axis.text = element_text(size = 14)     # axis tick font size
-  )
-print(plot_drift_comb_neg)
-ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_Drift_BPRS-Neg.png"),
-         plot_drift_comb_neg, width = 6, height = 4)
 ```
 
-
-# DDM-BPRS Correlations at BL1+BL2 Comb - pearson
+## function for spearman correlations
 ```{r}
-# filter data to only include intercepts and bprs
-dat_cor_comb_pt <- dat_ddm_comb_intc_pt %>% 
-  select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws)
+spearman_corr <- function(dat) {
+  
+  # Compute correlation matrix
+  cor_matrix <- cor(dat, use = "pairwise.complete.obs", method = "spearman")
+  
+  n <- ncol(dat)
+  
+  # Initialize p-value matrix
+  p_matrix <- matrix(NA, n, n)
+  colnames(p_matrix) <- colnames(cor_matrix)
+  rownames(p_matrix) <- colnames(cor_matrix)
+  
+  # Loop through variable pairs
+  for (i in 1:(n - 1)) {
+    for (j in (i + 1):n) {
+      x <- dat[[i]]
+      y <- dat[[j]]
+      valid_idx <- complete.cases(x, y)
+      
+      if (sum(valid_idx) >= 3) {
+        test <- cor.test(x[valid_idx], y[valid_idx], method = "spearman")
+        p_matrix[i, j] <- test$p.value
+        p_matrix[j, i] <- test$p.value
+      } else {
+        p_matrix[i, j] <- NA
+        p_matrix[j, i] <- NA
+      }
+    }
+    p_matrix[i, i] <- 0
+  }
+  p_matrix[n, n] <- 0
+  
+  # Adjust p-values (using BH/FDR)
+  upper_idx <- upper.tri(p_matrix)
+  p_vals <- p_matrix[upper_idx]
+  p_adj <- p.adjust(p_vals, method = "BH")
+  
+  p_matrix_adj <- matrix(NA, n, n)
+  colnames(p_matrix_adj) <- colnames(p_matrix)
+  rownames(p_matrix_adj) <- rownames(p_matrix)
+  
+  # Fill upper triangle
+  p_matrix_adj[upper_idx] <- p_adj
+  
+  # Mirror to lower triangle
+  p_matrix_adj <- t(p_matrix_adj)
+  p_matrix_adj[upper_idx] <- p_adj
+  
+  # Diagonal = 0
+  diag(p_matrix_adj) <- 0
+  
+  # Return everything
+  list(
+    cor = cor_matrix,
+    p_raw = p_matrix,
+    p_adj = p_matrix_adj
+  )
+}
+```
 
-# run correlations
-sum(is.na(dat_cor_comb_pt))
+## Cor matrix for 4-DDM & 3-BPRS (spearman, BL1+BL2)
+```{r, warning=FALSE}
+# filter data to only include 3 DDM intercepts and 3 BPRS psychosis variables
+cor_ddm4_bprs3_bl1 <- dat_ddm_bprs_bl1_pt %>% 
+  select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg)
 
-dat_cor_comb_pt <- cor(dat_cor_comb_pt, use="pairwise.complete.obs")
-colnames(dat_cor_comb_pt) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
-rownames(dat_cor_comb_pt) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
+# Rename for later plotting
+colnames(cor_ddm4_bprs3_bl1) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
 
-# plot correlation matrix
-corrplot(dat_cor_comb_pt,
-         method = "color", 
-         addCoef.col = 'grey45',
-         tl.cex = 1,  # Axis label text size
-         tl.col = "black", # Axis label text color
-         number.cex = 1,  # Coefficient text size
-         title = "Correlations of Parameters and BPRS", # title
-         mar = c(1, 1, 2, 1))  # Adjust margins for title spacing
+# Remove rows with all NA
+cor_ddm4_bprs3_bl1 <- cor_ddm4_bprs3_bl1[rowSums(is.na(cor_ddm4_bprs3_bl1)) < ncol(cor_ddm4_bprs3_bl1), ]
 
+# return spearman's rho, unadjusted p-values, and FDR/BH-adjusted p-values
+spearman_corr(cor_ddm4_bprs3_bl1)
 
-# get p-vals
-# Create an empty matrix for p-values
-n <- ncol(dat_cor_comb_pt)
-p_values <- matrix(NA, n, n)
-colnames(p_values) <- colnames(dat_cor_comb_pt)
-rownames(p_values) <- rownames(dat_cor_comb_pt)
+# Compute Spearman correlation matrix
+cor_matrix <- cor(cor_ddm4_bprs3_bl1, use = "pairwise.complete.obs", method = "spearman")
 
-# Compute correlation coefficients and p-values
+# Number of variables
+n <- ncol(cor_ddm4_bprs3_bl1)
+# Initialize p-value matrix
+p_matrix <- matrix(NA, n, n)
+colnames(p_matrix) <- colnames(cor_matrix)
+rownames(p_matrix) <- colnames(cor_matrix)
+
+# Loop through all unique variable pairs
 for (i in 1:(n - 1)) {
   for (j in (i + 1):n) {
-    test <- cor.test(dat_cor_comb_pt[, i], dat_cor_comb_pt[, j])  # Perform cor.test
-    p_values[i, j] <- test$p.value
-    p_values[j, i] <- test$p.value  # Fill the symmetric matrix
+    x <- cor_ddm4_bprs3_bl1[[i]]
+    y <- cor_ddm4_bprs3_bl1[[j]]
+    valid_idx <- complete.cases(x, y)
+    
+    if (sum(valid_idx) >= 3) {
+      test <- cor.test(x[valid_idx], y[valid_idx], method = "spearman")
+      p_matrix[i, j] <- test$p.value
+      p_matrix[j, i] <- test$p.value
+    } else {
+      p_matrix[i, j] <- NA
+      p_matrix[j, i] <- NA
+    }
   }
+  p_matrix[i, i] <- 0
 }
+p_matrix[n, n] <- 0
 
-# Print p-value matrix
-print(p_values)
+print("spearman rho")
+print(round(cor_matrix, 2))
+print("spearman p raw values")
+print(round(p_matrix, 3))
+
+# adjust p-values
+# Extract upper triangle p-values
+upper_idx <- upper.tri(p_matrix)
+p_vals <- p_matrix[upper_idx]
+p_adj <- p.adjust(p_vals, method = "BH")  # FDR correction
+p_matrix_adj <- matrix(NA, n, n)
+colnames(p_matrix_adj) <- colnames(p_matrix)
+rownames(p_matrix_adj) <- rownames(p_matrix)
+
+# Fill upper triangle
+p_matrix_adj[upper_idx] <- p_adj
+
+# Mirror to lower triangle
+p_matrix_adj <- t(p_matrix_adj)
+p_matrix_adj[upper_idx] <- p_adj
+
+# Set diagonal to 0
+diag(p_matrix_adj) <- 0
+print("adjusted p-values (BH/FDR)")
+print(round(p_matrix_adj, 3))
+```
+### 4 DDM-3 BPRS plot v1
+```{r}
+# Copy correlation matrix so you can modify it
+cor_plot_v5 <- cor_matrix_v5
+diag(cor_plot_v5) <- NA
+rownames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
+colnames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
+
+# Define color palette (centered around 0)
+col_pal <- colorRampPalette(c("#358E9C", "white", "#A30021"))(200)
+
+# define coefficient text colors
+#text_colors <- matrix(ifelse(cor_plot_v5 > 0.3, "white", "black"),
+                      # nrow = nrow(cor_plot_v5),
+                      # ncol = ncol(cor_plot_v5))
+#text_colors[upper.tri(text_colors, diag = TRUE)] <- NA
+#text_colors <- text_colors[-1, ]   # removes the first row
+#text_colors <- text_colors[,-7]   # removes the first row
+#text_colors_vec <- as.vector(t(text_colors))
+
+# Plot Spearman correlation matrix with significance masking
+# filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf")
+# png(filename, width = 6, height = 6, units = "in", res = 300)  # width/height in pixels
+# dev.cur()
+corrplot(cor_plot_v5,
+         method = "color",
+         col = col_pal,
+         is.corr = FALSE,
+         col.lim = c(-0.5, .5),
+         type = "lower",
+         diag = TRUE,
+         
+         #p.mat = p_values,
+         sig.level = 0.05,
+         insig = "blank",
+         addCoef.col = "black", #text_colors,
+         number.cex = 0.7,
+
+         tl.col = "black",
+         tl.pos = "t",
+         tl.cex = 0.7,
+         tl.srt = 45,
+         
+         cl.pos = "r",
+         cl.cex = 0.7,
+         cl.ratio = 0.2,
+         cl.align.text = "l",
+         
+         title = "Spearman Correlations of Parameters and BPRS",
+         cex.main = .9,
+         mar = c(1, 1, 2, 1),
+         frame.plot = TRUE)
+# dev.off()
+# plot_ddm_bprs
+# gsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf"),
+#          plot_ddm_bprs, width = 6, height = 6)
 ```
 
-# DDM-BPRS Correlations at BL1+BL2 Comb - spearman
-```{r, warning=FALSE}
-# filter data to only include intercepts and BPRS variables
-dat_cor_comb_pt_v2 <- dat_ddm_comb_intc_pt %>% 
-  select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws)
+### 4 DDM-3 BPRS plot v2
+```{r}
+# ggplot version, bottom right diagonal
+install.packages("ggcorrplot")
+library(ggcorrplot)
+
+ggcorrplot(cor_plot_v5,
+           type = "upper",
+           lab = TRUE,
+           lab_size = 3,
+           colors = col_pal) +          # color palette
+  scale_fill_gradient2(
+    low = "#2c7bb6",              # negative correlations
+    mid = "white",
+    high = "#d7191c",             # positive correlations
+    midpoint = 0                  # center the color scale at 0
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # bottom x labels
+    axis.text.y = element_text(hjust = 1)               # left y labels
+  )
+```
+
+## Cor Matrix for 4-DDM & 5-BPRS
+```{r}
+# filter data to only include 3 DDM intercepts and 3 BPRS psychosis variables
+dat_cor_comb_pt_4d5b <- dat_ddm_comb_intc_pt %>% 
+  select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg, bprs_mania_ws_avg, bprs_dep_anx_ws_avg)
 
 # Remove rows with all NA
 dat_cor_comb_pt_v2 <- dat_cor_comb_pt_v2[rowSums(is.na(dat_cor_comb_pt_v2)) < ncol(dat_cor_comb_pt_v2), ]
@@ -1913,22 +2383,6 @@ cor_matrix_v5 <- cor(dat_cor_comb_pt_v2, use = "pairwise.complete.obs", method =
 # Rename for plotting
 colnames(cor_matrix_v5) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
 rownames(cor_matrix_v5) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
-# 
-# # Create p-value matrix for Spearman
-# n <- ncol(dat_cor_comb_pt)
-# p_values <- matrix(NA, n, n)
-# colnames(p_values) <- colnames(cor_matrix_v5)
-# rownames(p_values) <- rownames(cor_matrix_v5)
-# 
-# for (i in 1:(n - 1)) {
-#   for (j in (i + 1):n) {
-#     test <- cor.test(dat_cor_comb_pt[[i]], dat_cor_comb_pt[[j]], method = "spearman")
-#     p_values[i, j] <- test$p.value
-#     p_values[j, i] <- test$p.value
-#   }
-#   p_values[i, i] <- 0
-# }
-# p_values[n, n] <- 0  # Diagonal last cell
 
 # Number of variables
 n <- ncol(dat_cor_comb_pt_v2)
@@ -1984,7 +2438,7 @@ print("adjusted p-values (BH)")
 print(round(p_matrix_adj_v5, 3))
 ```
 
-# DDM-BPRS plot
+### 4 DDM-3 BPRS plot v1
 ```{r}
 # Copy correlation matrix so you can modify it
 cor_plot_v5 <- cor_matrix_v5
@@ -2004,11 +2458,10 @@ col_pal <- colorRampPalette(c("#358E9C", "white", "#A30021"))(200)
 #text_colors <- text_colors[,-7]   # removes the first row
 #text_colors_vec <- as.vector(t(text_colors))
 
-
 # Plot Spearman correlation matrix with significance masking
-filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.png")
-png(filename, width = 6, height = 6, units = "in", res = 300)  # width/height in pixels
-dev.cur()
+# filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf")
+# png(filename, width = 6, height = 6, units = "in", res = 300)  # width/height in pixels
+# dev.cur()
 corrplot(cor_plot_v5,
          method = "color",
          col = col_pal,
@@ -2037,29 +2490,78 @@ corrplot(cor_plot_v5,
          cex.main = .9,
          mar = c(1, 1, 2, 1),
          frame.plot = TRUE)
-dev.off()
-plot_ddm_bprs
-ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.png"),
-         plot_ddm_bprs, width = 6, height = 6)
+# dev.off()
+# plot_ddm_bprs
+# gsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf"),
+#          plot_ddm_bprs, width = 6, height = 6)
+```
+## Drift Rate
+### Corr matrix for drift-BPRS (spearman, BL1+BL2)
+```{r}
+# Run Spearman correlations between "mean" and multiple BPRS variables, grouped by "cttype"
+cor_table_v3 <- v_dat_all_pt %>%
+  group_by(cttype) %>%
+  summarise(
+    cor_bprs_pos = cor(mean, bprs_pos_ws_avg, use = "complete.obs", method = "spearman"),
+    cor_bprs_neg = cor(mean, bprs_neg_ws_avg, use = "complete.obs", method = "spearman"),
+    cor_bprs_disorg = cor(mean, bprs_disorg_ws_avg, use = "complete.obs", method = "spearman"),
+    .groups = "drop"
+  )
+print(cor_table_v3)
 
-# ggplot version, bottom right diagonal
-# library(ggcorrplot)
-# ggcorrplot(cor_plot_v5,
-#            type = "lower",
-#            lab = TRUE,
-#            lab_size = 3,
-#            colors = col_pal) +          # color palette
-#   scale_fill_gradient2(
-#     low = "#2c7bb6",              # negative correlations
-#     mid = "white",
-#     high = "#d7191c",             # positive correlations
-#     midpoint = 0                  # center the color scale at 0
-#   ) +
-#   theme_classic() +
-#   theme(
-#     axis.text.x = element_text(angle = 45, hjust = 1),  # bottom x labels
-#     axis.text.y = element_text(hjust = 1)               # left y labels
-#   )
+cor_matrix_v3 <- as.matrix(cor_table_v3[, -1])
+colnames(cor_matrix_v3) <- c("Positive", "Negative", "Disorganized")
+rownames(cor_matrix_v3) <- c("v-AX", "v-AY", "v-BX", "v-BY")
+
+# plot correlation matrix
+corrplot(cor_matrix_v3,
+         method = "color", 
+         addCoef.col = 'grey45',
+         tl.cex = 1,
+         tl.col = "black",
+         number.cex = 1,
+         title = "Spearman Correlations of Drift Rate and BPRS",
+         mar = c(1, 1, 2, 1))
+
+# Compute correlation coefficients and p-values using Spearman method
+cor_table_v4 <- v_dat_all_pt %>%
+  group_by(cttype) %>%
+  summarise(
+    cor_bprs_pos = cor(mean, bprs_pos_ws_avg, use = "complete.obs", method = "spearman"),
+    p_bprs_pos = cor.test(mean, bprs_pos_ws_avg, method = "spearman")$p.value,
+    
+    cor_bprs_neg = cor(mean, bprs_neg_ws_avg, use = "complete.obs", method = "spearman"),
+    p_bprs_neg = cor.test(mean, bprs_neg_ws_avg, method = "spearman")$p.value,
+    
+    cor_bprs_disorg = cor(mean, bprs_disorg_ws_avg, use = "complete.obs", method = "spearman"),
+    p_bprs_disorg = cor.test(mean, bprs_disorg_ws_avg, method = "spearman")$p.value,
+    
+    .groups = "drop"
+  )
+print(cor_table_v4)
+```
+
+### Plot drift-BPRS neg
+```{r}
+# merge intercepts with behav data
+dat_ddm_comb_intc <- merge(dat_ddm_comb_intc, dat_behav, by = "subj_idx", all.x = TRUE)
+dat_ddm_comb_intc_pt <- dat_ddm_comb_intc %>% 
+  filter(group == "Patient")
+
+plot_drift_comb_neg <- ggplot(dat_ddm_comb_intc, aes(x=v_sum, y=bprs_negative)) +
+  geom_point(size = 1.5) + 
+  geom_smooth(method=lm, se = FALSE, color = "#A61936", size = line_width) +
+  labs(x="Drift Rate (v)", y = "BPRS Negative Symptoms") +
+  theme_classic() +
+  coord_cartesian(xlim = c(0,4)) +
+
+  theme(
+    axis.title = element_text(size = axis_title),   # axis label font size
+    axis.text = element_text(size = axis_text)     # axis tick font size
+  )
+print(plot_drift_comb_neg)
+ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_Drift_BPRS-Neg.pdf"),
+         plot_drift_comb_neg, width = 6, height = 4)
 ```
 
 # TOPX CORRELATIONS
@@ -2067,14 +2569,14 @@ ggsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.png"),
 ```{r, warning=FALSE}
 # filter data to only include intercepts and BPRS variables
 dat_topx_behav_wide <- dat_topx_behav %>% 
-  select(c(subj_idx, group, visit, cttype, rt_mdn, error, d_context, d_expect, bprs_total, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws))
+  select(c(subj_idx, group, visit, cttype, rt_mdn, error, d_context, d_expect, bprs_total, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg))
 
 dat_topx_behav_wide <- dat_topx_behav_wide %>%
-  pivot_wider(id_cols = c(subj_idx, group, visit, d_context, d_expect, bprs_total, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws), values_from = c(rt_mdn, error), names_from = cttype)
+  pivot_wider(id_cols = c(subj_idx, group, visit, d_context, d_expect, bprs_total, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg), values_from = c(rt_mdn, error), names_from = cttype)
 
 dat_cor_topx_bprs <- dat_topx_behav_wide %>%
   filter(group == "Patient") %>% 
-  select(c(error_AX, error_AY, error_BX, d_context, bprs_pos_ws, bprs_neg_ws, bprs_disorg_ws))
+  select(c(error_AX, error_AY, error_BX, d_context, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg))
   
   # 
   # pivot_longer(
@@ -2207,7 +2709,7 @@ v_dat_all_pt_BY <- filter(v_dat_all_pt, cttype == "BY")
 ```{r}
 # v-AX - BPRS
 # cor_sxs(v_dat_all_pt_AX, "bprs_pos_ws")
-cor_sxs(v_dat_all_pt_AX, "bprs_neg_ws")
+cor_sxs(v_dat_all_pt_AX, "bprs_neg_ws_avg")
 # cor_sxs(v_dat_all_pt_AX, "bprs_disorg_ws")
 # cor_sxs(v_dat_all_pt_AX, "bprs_dep_anx_ws")
 # cor_sxs(v_dat_all_pt_AX, "bprs_mania_ws")
@@ -2217,11 +2719,11 @@ cor_sxs(v_dat_all_pt_AX, "bprs_neg_ws")
 # 
 
 # v-AY - BPRS
-cor_sxs(v_dat_all_pt_AY, "bprs_neg_ws")
+cor_sxs(v_dat_all_pt_AY, "bprs_neg_ws_avg")
 
 # # v-BX - BPRS
 # cor_sxs(v_dat_all_pt_BX, "bprs_pos_ws")
-cor_sxs(v_dat_all_pt_BX, "bprs_neg_ws")
+cor_sxs(v_dat_all_pt_BX, "bprs_neg_ws_avg")
 # cor_sxs(v_dat_all_pt_BX, "bprs_disorg_ws")
 # cor_sxs(v_dat_all_pt_BX, "bprs_dep_anx_ws")
 # cor_sxs(v_dat_all_pt_BX, "bprs_mania_ws")
@@ -2231,7 +2733,7 @@ cor_sxs(v_dat_all_pt_BX, "bprs_neg_ws")
 # 
 # # v-BY - BPRS
 # cor_sxs(v_dat_all_pt_BY, "bprs_pos_ws")
-cor_sxs(v_dat_all_pt_BY, "bprs_neg_ws")
+cor_sxs(v_dat_all_pt_BY, "bprs_neg_ws_avg")
 # cor_sxs(v_dat_all_pt_BY, "bprs_disorg_ws")
 # cor_sxs(v_dat_all_pt_BY, "bprs_dep_anx_ws")
 # cor_sxs(v_dat_all_pt_BY, "bprs_mania_ws")
@@ -2285,7 +2787,7 @@ cor_sxs(v_dat_all_pt_BY, "bprs_neg_ws")
 #           plot.title = element_text(face = "bold", size = 22))
 # plot_vbx_neg
 # 
-# ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_vBX_BPRSneg.png"),
+# ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_vBX_BPRSneg.pdf"),
 #        plot_vbx_neg, width = 6, height = 4)
 
 ```
@@ -2323,6 +2825,7 @@ errTable <- dat_topx_all %>%
     error_mean = round(mean(error, na.rm = TRUE),2),
     error_sd = round(sd(error, na.rm = TRUE),2))
 errTable
+sum(table(unique(dat_topx_all$subj_idx)))
 
 ### rt descriptives ----------
 rtTable <- dat_topx_all %>% 
