@@ -2155,7 +2155,25 @@ dat_ddm_bprs_bl1_pt <- dat_ddm_bprs_bl1 %>%
 
 ## function for spearman correlations
 ```{r}
-spearman_corr <- function(dat) {
+spearman_corr <- function(
+    data,
+    vars, # character vector of variables to select
+    new_names = NULL,  # optional new column names
+    matrix_title # name of correlation matrix in global env
+) {
+  
+  dat <- data[, vars, drop = FALSE]
+  
+  # 2. Apply new column names if provided
+  if (!is.null(new_names)) {
+    if (length(new_names) != length(vars)) {
+      stop("new_names must be the same length as vars")
+    }
+    colnames(dat) <- new_names
+  }
+  
+  # Remove rows that are entirely NA
+  dat <- dat[rowSums(is.na(dat)) < ncol(dat), ]
   
   # Compute correlation matrix
   cor_matrix <- cor(dat, use = "pairwise.complete.obs", method = "spearman")
@@ -2206,93 +2224,117 @@ spearman_corr <- function(dat) {
   # Diagonal = 0
   diag(p_matrix_adj) <- 0
   
+  # save correlation matrix for later use
+  assign(matrix_title, as.data.frame(cor_matrix), 
+         envir = .GlobalEnv)
+  
   # Return everything
   list(
-    cor = cor_matrix,
-    p_raw = p_matrix,
-    p_adj = p_matrix_adj
+    cor = round(cor_matrix, 2),
+    p_raw = round(p_matrix, 3),
+    p_adj = round(p_matrix_adj,3)
   )
 }
+```
+
+## function for plots
+```{r}
+save_corrplot_pdf <- function(cor_mat,
+                              filename,
+                              labels = NULL,
+                              plot_title = "Correlation Plot",
+                              width = 10,
+                              height = 6) {
+  
+  # Convert to matrix
+  cor_mat <- as.matrix(cor_mat)
+  diag(cor_mat) <- NA
+  
+  # Apply custom row/column names if provided
+  if (!is.null(labels)) {
+    rownames(cor_mat) <- labels
+  }
+  if (!is.null(labels)) {
+    colnames(cor_mat) <- labels
+  }
+  
+  # Color palette
+  col_pal <- colorRampPalette(c("#358E9C", "white", "#A30021"))(200)
+  
+  # Open PDF device (must run in console)
+  filename_placeholder <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), filename)
+  pdf(filename_placeholder, width = width, height = height)
+  
+  # Draw corrplot
+  corrplot(cor_mat,
+           diag = FALSE,
+           type = "lower",
+           method = "color",
+           col = col_pal,
+           is.corr = FALSE,
+           col.lim = c(-0.5, 0.5),
+           sig.level = 0.05,
+           insig = "blank",
+           addCoef.col = "black",
+           number.cex = 1.17, # correlation coefficients
+           tl.col = "black",
+           tl.pos = "t",
+           tl.cex = 1.17, # variable names
+           tl.srt = 45,
+           cl.pos = "r",
+           cl.cex = 1.17, # legend text
+           cl.ratio = 0.2,
+           cl.align.text = "l",
+           title = plot_title,
+           cex.main = 1.50,  # title size
+           mar = c(1, 1, 2, 1),
+           frame.plot = TRUE)
+  
+  # Close device
+  dev.off()
+}
+```
+
+## set plot parameter using CEX
+```{r}
+## convert font size to CEX
+## axis_text: 14 =	1.17
+## axis_title: 16 = 1.33
+## legend_text: 14 = 1.17
+## legend_title: 14 = 1.17
+## plot_title: 18 = 1.50
+
+# axis_text_cex = 1.17
+# axis_title_cex = 1.33
+# coeff_text_cex = .9
+# legend_text_cex = 1.17
+# legend_title_cex = 1.17
+# plot_title_cex = 1.50
 ```
 
 ## Cor matrix for 4-DDM & 3-BPRS (spearman, BL1+BL2)
 ```{r, warning=FALSE}
 # filter data to only include 3 DDM intercepts and 3 BPRS psychosis variables
-cor_ddm4_bprs3_bl1 <- dat_ddm_bprs_bl1_pt %>% 
+dat_ddm4_bprs3_bl1 <- dat_ddm_bprs_bl1_pt %>% 
   select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg)
 
 # Rename for later plotting
-colnames(cor_ddm4_bprs3_bl1) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
+colnames(dat_ddm4_bprs3_bl1) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
 
 # Remove rows with all NA
-cor_ddm4_bprs3_bl1 <- cor_ddm4_bprs3_bl1[rowSums(is.na(cor_ddm4_bprs3_bl1)) < ncol(cor_ddm4_bprs3_bl1), ]
+dat_ddm4_bprs3_bl1 <- dat_ddm4_bprs3_bl1[rowSums(is.na(dat_ddm4_bprs3_bl1)) < ncol(dat_ddm4_bprs3_bl1), ]
 
 # return spearman's rho, unadjusted p-values, and FDR/BH-adjusted p-values
-spearman_corr(cor_ddm4_bprs3_bl1)
-
-# Compute Spearman correlation matrix
-cor_matrix <- cor(cor_ddm4_bprs3_bl1, use = "pairwise.complete.obs", method = "spearman")
-
-# Number of variables
-n <- ncol(cor_ddm4_bprs3_bl1)
-# Initialize p-value matrix
-p_matrix <- matrix(NA, n, n)
-colnames(p_matrix) <- colnames(cor_matrix)
-rownames(p_matrix) <- colnames(cor_matrix)
-
-# Loop through all unique variable pairs
-for (i in 1:(n - 1)) {
-  for (j in (i + 1):n) {
-    x <- cor_ddm4_bprs3_bl1[[i]]
-    y <- cor_ddm4_bprs3_bl1[[j]]
-    valid_idx <- complete.cases(x, y)
-    
-    if (sum(valid_idx) >= 3) {
-      test <- cor.test(x[valid_idx], y[valid_idx], method = "spearman")
-      p_matrix[i, j] <- test$p.value
-      p_matrix[j, i] <- test$p.value
-    } else {
-      p_matrix[i, j] <- NA
-      p_matrix[j, i] <- NA
-    }
-  }
-  p_matrix[i, i] <- 0
-}
-p_matrix[n, n] <- 0
-
-print("spearman rho")
-print(round(cor_matrix, 2))
-print("spearman p raw values")
-print(round(p_matrix, 3))
-
-# adjust p-values
-# Extract upper triangle p-values
-upper_idx <- upper.tri(p_matrix)
-p_vals <- p_matrix[upper_idx]
-p_adj <- p.adjust(p_vals, method = "BH")  # FDR correction
-p_matrix_adj <- matrix(NA, n, n)
-colnames(p_matrix_adj) <- colnames(p_matrix)
-rownames(p_matrix_adj) <- rownames(p_matrix)
-
-# Fill upper triangle
-p_matrix_adj[upper_idx] <- p_adj
-
-# Mirror to lower triangle
-p_matrix_adj <- t(p_matrix_adj)
-p_matrix_adj[upper_idx] <- p_adj
-
-# Set diagonal to 0
-diag(p_matrix_adj) <- 0
-print("adjusted p-values (BH/FDR)")
-print(round(p_matrix_adj, 3))
+spearman_corr(dat_ddm4_bprs3_bl1, "cor_ddm4_bprs3_bl1")
 ```
+
 ### 4 DDM-3 BPRS plot v1
 ```{r}
 # Copy correlation matrix so you can modify it
-cor_plot_v5 <- cor_matrix_v5
-diag(cor_plot_v5) <- NA
-rownames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
-colnames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
+plot_ddm4_bprs3_bl1 <- cor_ddm4_bprs3_bl1
+diag(plot_ddm4_bprs3_bl1) <- NA
+rownames(plot_ddm4_bprs3_bl1) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
+colnames(plot_ddm4_bprs3_bl1) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
 
 # Define color palette (centered around 0)
 col_pal <- colorRampPalette(c("#358E9C", "white", "#A30021"))(200)
@@ -2307,10 +2349,11 @@ col_pal <- colorRampPalette(c("#358E9C", "white", "#A30021"))(200)
 #text_colors_vec <- as.vector(t(text_colors))
 
 # Plot Spearman correlation matrix with significance masking
-# filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf")
-# png(filename, width = 6, height = 6, units = "in", res = 300)  # width/height in pixels
-# dev.cur()
-corrplot(cor_plot_v5,
+filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_ddm4_bprs3_bl1.pdf")
+# MUST RUN THIS SECTION IN CONSOLE, NOT MARKDOWN CHUNK
+pdf(filename, width = 10, height = 6) # RUN IN CONSOLE
+dev.cur() # RUN IN CONSOLE
+corrplot(as.matrix(plot_ddm4_bprs3_bl1),
          method = "color",
          col = col_pal,
          is.corr = FALSE,
@@ -2322,35 +2365,30 @@ corrplot(cor_plot_v5,
          sig.level = 0.05,
          insig = "blank",
          addCoef.col = "black", #text_colors,
-         number.cex = 0.7,
+         number.cex = axis_text_cex, # coefficient size
+
 
          tl.col = "black",
          tl.pos = "t",
-         tl.cex = 0.7,
+         tl.cex = axis_text_cex, # variable name size
          tl.srt = 45,
          
          cl.pos = "r",
-         cl.cex = 0.7,
+         cl.cex = legend_text_cex, # legend size
          cl.ratio = 0.2,
          cl.align.text = "l",
          
          title = "Spearman Correlations of Parameters and BPRS",
-         cex.main = .9,
+         cex.main = plot_title_cex, # title size
          mar = c(1, 1, 2, 1),
-         frame.plot = TRUE)
-# dev.off()
-# plot_ddm_bprs
-# gsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf"),
-#          plot_ddm_bprs, width = 6, height = 6)
+        frame.plot = TRUE)
+dev.off() # RUN IN CONSOLE
 ```
 
 ### 4 DDM-3 BPRS plot v2
 ```{r}
 # ggplot version, bottom right diagonal
-install.packages("ggcorrplot")
-library(ggcorrplot)
-
-ggcorrplot(cor_plot_v5,
+ggcorrplot(as.matrix(plot_ddm4_bprs3_bl1),
            type = "upper",
            lab = TRUE,
            lab_size = 3,
@@ -2369,100 +2407,36 @@ ggcorrplot(cor_plot_v5,
 ```
 
 ## Cor Matrix for 4-DDM & 5-BPRS
-```{r}
+```{r, warning=FALSE}
 # filter data to only include 3 DDM intercepts and 3 BPRS psychosis variables
-dat_cor_comb_pt_4d5b <- dat_ddm_comb_intc_pt %>% 
+dat_ddm4_bprs5_bl1 <- dat_ddm_bprs_bl1_pt %>% 
   select(v_sum, a_sum, t_sum, z_sum, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg, bprs_mania_ws_avg, bprs_dep_anx_ws_avg)
+colnames(dat_ddm4_bprs5_bl1) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized", "Mania", "Depr-Anx")
 
 # Remove rows with all NA
-dat_cor_comb_pt_v2 <- dat_cor_comb_pt_v2[rowSums(is.na(dat_cor_comb_pt_v2)) < ncol(dat_cor_comb_pt_v2), ]
+dat_ddm4_bprs5_bl1 <- dat_ddm4_bprs5_bl1[rowSums(is.na(dat_ddm4_bprs5_bl1)) < ncol(dat_ddm4_bprs5_bl1), ]
 
-# Compute Spearman correlation matrix
-cor_matrix_v5 <- cor(dat_cor_comb_pt_v2, use = "pairwise.complete.obs", method = "spearman")
-
-# Rename for plotting
-colnames(cor_matrix_v5) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
-rownames(cor_matrix_v5) <- c("v", "a", "t", "w", "Positive", "Negative", "Disorganized")
-
-# Number of variables
-n <- ncol(dat_cor_comb_pt_v2)
-# Initialize p-value matrix
-p_matrix_v5 <- matrix(NA, n, n)
-colnames(p_matrix_v5) <- colnames(cor_matrix_v5)
-rownames(p_matrix_v5) <- colnames(cor_matrix_v5)
-
-# Loop through all unique variable pairs
-for (i in 1:(n - 1)) {
-  for (j in (i + 1):n) {
-    x <- dat_cor_comb_pt_v2[[i]]
-    y <- dat_cor_comb_pt_v2[[j]]
-    valid_idx <- complete.cases(x, y)
-    
-    if (sum(valid_idx) >= 3) {
-      test <- cor.test(x[valid_idx], y[valid_idx], method = "spearman")
-      p_matrix_v5[i, j] <- test$p.value
-      p_matrix_v5[j, i] <- test$p.value
-    } else {
-      p_matrix_v5[i, j] <- NA
-      p_matrix_v5[j, i] <- NA
-    }
-  }
-  p_matrix_v5[i, i] <- 0
-}
-p_matrix_v5[n, n] <- 0
-
-print("spearman rho")
-print(round(cor_matrix_v5, 2))
-print("spearman p raw values")
-print(round(p_matrix_v5, 3))
-
-# adjust p-values
-# Extract upper triangle p-values
-upper_idx <- upper.tri(p_matrix_v5)
-p_vals <- p_matrix_v5[upper_idx]
-p_adj <- p.adjust(p_vals, method = "BH")  # FDR correction
-p_matrix_adj_v5 <- matrix(NA, n, n)
-colnames(p_matrix_adj_v5) <- colnames(p_matrix_v5)
-rownames(p_matrix_adj_v5) <- rownames(p_matrix_v5)
-
-# Fill upper triangle
-p_matrix_adj_v5[upper_idx] <- p_adj
-
-# Mirror to lower triangle
-p_matrix_adj_v5 <- t(p_matrix_adj_v5)
-p_matrix_adj_v5[upper_idx] <- p_adj
-
-# Set diagonal to 0
-diag(p_matrix_adj_v5) <- 0
-print("adjusted p-values (BH)")
-print(round(p_matrix_adj_v5, 3))
+# return spearman's rho, unadjusted p-values, and FDR/BH-adjusted p-values
+spearman_corr(dat_ddm4_bprs5_bl1, "cor_ddm4_bprs5_bl1")
 ```
 
 ### 4 DDM-3 BPRS plot v1
 ```{r}
 # Copy correlation matrix so you can modify it
-cor_plot_v5 <- cor_matrix_v5
-diag(cor_plot_v5) <- NA
-rownames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
-colnames(cor_plot_v5) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized")
+plot_ddm4_bprs5_bl1 <- cor_ddm4_bprs5_bl1
+diag(plot_ddm4_bprs5_bl1) <- NA
+rownames(plot_ddm4_bprs5_bl1) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized", "BPRS Mania", "BPRS Depression-Anxiety")
+colnames(plot_ddm4_bprs5_bl1) <- c("Drift Rate (v)", "Decision Threshold (a)", "Non-Decision Time (t)", "Degree of Bias (w)", "BPRS Positive", "BPRS Negative", "BPRS Disorganized", "BPRS Mania", "BPRS Depression-Anxiety")
 
 # Define color palette (centered around 0)
 col_pal <- colorRampPalette(c("#358E9C", "white", "#A30021"))(200)
 
-# define coefficient text colors
-#text_colors <- matrix(ifelse(cor_plot_v5 > 0.3, "white", "black"),
-                      # nrow = nrow(cor_plot_v5),
-                      # ncol = ncol(cor_plot_v5))
-#text_colors[upper.tri(text_colors, diag = TRUE)] <- NA
-#text_colors <- text_colors[-1, ]   # removes the first row
-#text_colors <- text_colors[,-7]   # removes the first row
-#text_colors_vec <- as.vector(t(text_colors))
-
-# Plot Spearman correlation matrix with significance masking
-# filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf")
-# png(filename, width = 6, height = 6, units = "in", res = 300)  # width/height in pixels
-# dev.cur()
-corrplot(cor_plot_v5,
+# use as needed - rstudioapi::restartSession()
+# MUST RUN THIS SECTION IN CONSOLE, NOT MARKDOWN CHUNK
+filename <- paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_ddm4_bprs5_bl1.pdf")
+pdf(filename, width = 10, height = 7) # RUN IN CONSOLE
+dev.cur() # RUN IN CONSOLE
+corrplot(as.matrix(plot_ddm4_bprs5_bl1),
          method = "color",
          col = col_pal,
          is.corr = FALSE,
@@ -2473,33 +2447,31 @@ corrplot(cor_plot_v5,
          #p.mat = p_values,
          sig.level = 0.05,
          insig = "blank",
-         addCoef.col = "black", #text_colors,
-         number.cex = 0.7,
+         addCoef.col = "black", #text colors,
+         number.cex = coeff_text_cex, # coefficient size
 
          tl.col = "black",
          tl.pos = "t",
-         tl.cex = 0.7,
+         tl.cex = axis_text_cex, # variable names size
          tl.srt = 45,
          
          cl.pos = "r",
-         cl.cex = 0.7,
+         cl.cex = legend_text_cex, # legend size
          cl.ratio = 0.2,
          cl.align.text = "l",
          
          title = "Spearman Correlations of Parameters and BPRS",
-         cex.main = .9,
+         cex.main = plot_title_cex, # title size
          mar = c(1, 1, 2, 1),
          frame.plot = TRUE)
-# dev.off()
-# plot_ddm_bprs
-# gsave(paste0("graphs/", format(Sys.Date(), "%Y%m%d"), "_DDM_BPRS.pdf"),
-#          plot_ddm_bprs, width = 6, height = 6)
+dev.off() # RUN IN CONSOLE
 ```
-## Drift Rate
-### Corr matrix for drift-BPRS (spearman, BL1+BL2)
+
+## (Old) Corr matrix for BPRS-drift by type (spearman, BL1+BL2)
 ```{r}
 # Run Spearman correlations between "mean" and multiple BPRS variables, grouped by "cttype"
-cor_table_v3 <- v_dat_all_pt %>%
+v_dat_bl1_pt <- filter(v_dat_bl1, group == "Patient")
+cor_table_v3 <- v_dat_bl1_pt %>%
   group_by(cttype) %>%
   summarise(
     cor_bprs_pos = cor(mean, bprs_pos_ws_avg, use = "complete.obs", method = "spearman"),
@@ -2524,7 +2496,7 @@ corrplot(cor_matrix_v3,
          mar = c(1, 1, 2, 1))
 
 # Compute correlation coefficients and p-values using Spearman method
-cor_table_v4 <- v_dat_all_pt %>%
+cor_table_v4 <- v_dat_bl1_pt %>%
   group_by(cttype) %>%
   summarise(
     cor_bprs_pos = cor(mean, bprs_pos_ws_avg, use = "complete.obs", method = "spearman"),
@@ -2541,14 +2513,14 @@ cor_table_v4 <- v_dat_all_pt %>%
 print(cor_table_v4)
 ```
 
-### Plot drift-BPRS neg
+### (Old) Plot drift intercept-BPRS neg
 ```{r}
 # merge intercepts with behav data
-dat_ddm_comb_intc <- merge(dat_ddm_comb_intc, dat_behav, by = "subj_idx", all.x = TRUE)
-dat_ddm_comb_intc_pt <- dat_ddm_comb_intc %>% 
+dat_ddm_bl1_intc <- merge(dat_ddm_bl1_intc, dat_behav, by = "subj_idx", all.x = TRUE)
+dat_ddm_bl1_intc_pt <- dat_ddm_bl1_intc %>% 
   filter(group == "Patient")
 
-plot_drift_comb_neg <- ggplot(dat_ddm_comb_intc, aes(x=v_sum, y=bprs_negative)) +
+plot_drift_comb_neg <- ggplot(dat_ddm_bl1_intc, aes(x=v_sum, y=bprs_negative)) +
   geom_point(size = 1.5) + 
   geom_smooth(method=lm, se = FALSE, color = "#A61936", size = line_width) +
   labs(x="Drift Rate (v)", y = "BPRS Negative Symptoms") +
@@ -2560,12 +2532,529 @@ plot_drift_comb_neg <- ggplot(dat_ddm_comb_intc, aes(x=v_sum, y=bprs_negative)) 
     axis.text = element_text(size = axis_text)     # axis tick font size
   )
 print(plot_drift_comb_neg)
-ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_Drift_BPRS-Neg.pdf"),
-         plot_drift_comb_neg, width = 6, height = 4)
+# ggsave(paste0("graphs/clinical/", format(Sys.Date(), "%Y%m%d"), "_Drift_BPRS-Neg.pdf"),
+#          plot_drift_comb_neg, width = 6, height = 4)
+```
+
+# Cor matrices 1x5
+## BPRS 5 + DDM 1
+### BPRS + drift
+```{r, warning=FALSE}
+# # filter data to only include 3 DDM intercepts and 3 BPRS psychosis variables
+# dat_ddmV_bprs5_bl1 <- dat_ddm_bprs_bl1_pt %>% 
+#   select(v_sum, bprs_pos_ws_avg, bprs_neg_ws_avg, bprs_disorg_ws_avg, bprs_mania_ws_avg, bprs_dep_anx_ws_avg)
+# 
+# # Rename for later plotting
+# colnames(dat_ddmV_bprs5_bl1) <- c("v", "Positive", "Negative", "Disorganized", "Mania", "Depression-Anxiety")
+# 
+# # Remove rows with all NA
+# dat_ddmV_bprs5_bl1 <- dat_ddmV_bprs5_bl1[rowSums(is.na(dat_ddmV_bprs5_bl1)) < ncol(dat_ddmV_bprs5_bl1), ]
+# 
+# # return spearman's rho, unadjusted p-values, and FDR/BH-adjusted p-values
+# spearman_corr(dat_ddmV_bprs5_bl1, "cor_ddmV_bprs5_bl1")
+
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("v_sum",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("v",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_ddmV_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_ddmV_bprs5_bl1,
+                              "_ddmV_bprs5_bl1.pdf",
+                              labels = c(
+                                "Drift Rate (v)",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS and Drift Rate",
+                              width = 10,
+                              height = 6)
+```
+
+### BPRS + dec thresh
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("a_sum",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("a",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_ddmA_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_ddmA_bprs5_bl1,
+                              "_ddmA_bprs5_bl1.pdf",
+                              labels = c(
+                                "Decision Threshold (a)",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS and Decision Threshold",
+                              width = 10,
+                              height = 6)
+```
+
+### BPRS + non-dec time
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("t_sum",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("t",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_ddmT_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_ddmT_bprs5_bl1,
+                              "_ddmT_bprs5_bl1.pdf",
+                              labels = c(
+                                "Non-Decision Time (t)",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS and Non-Decision Time",
+                              width = 10,
+                              height = 6)
+```
+
+### BPRS + bias
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("z_sum",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("z",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_ddmZ_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_ddmZ_bprs5_bl1,
+                              "_ddmZ_bprs5_bl1.pdf",
+                              labels = c(
+                                "Degree of Bias (z)",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS and Degree of Bias",
+                              width = 10,
+                              height = 6)
+```
+
+
+## BPRS 1 + DDM 4
+### DDM + Positive
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("bprs_pos_ws_avg",
+           "v_sum",
+           "a_sum",
+           "t_sum",
+           "z_sum"),
+  new_names = c("BPRS Positive",
+                "Drift Rate (v)",
+                "Decision Threshold (a)",
+                "Non-Decision Time (t)",
+                "Degrees of Bias (z)"),
+  matrix_title = "cor_bprsP_ddm4_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_bprsP_ddm4_bl1,
+                              "_bprsP_ddm4_bl1.pdf",
+                              labels = c(
+                                "BPRS Positive",
+                                "Drift Rate (v)",
+                                "Decision Threshold (a)",
+                                "Non-Decision Time (t)",
+                                "Degrees of Bias (z)"),
+                              plot_title = "Spearman Correlations of Positive Symptoms and DDM Parameters",
+                              width = 10,
+                              height = 6)
+```
+
+### DDM + Negative
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("bprs_neg_ws_avg",
+           "v_sum",
+           "a_sum",
+           "t_sum",
+           "z_sum"),
+  new_names = c("BPRS Negative",
+                "Drift Rate (v)",
+                "Decision Threshold (a)",
+                "Non-Decision Time (t)",
+                "Degrees of Bias (z)"),
+  matrix_title = "cor_bprsN_ddm4_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_bprsN_ddm4_bl1,
+                              "_bprsN_ddm4_bl1.pdf",
+                              labels = c(
+                                "BPRS Negative",
+                                "Drift Rate (v)",
+                                "Decision Threshold (a)",
+                                "Non-Decision Time (t)",
+                                "Degrees of Bias (z)"),
+                              plot_title = "Spearman Correlations of Negative Symptoms and DDM Parameters",
+                              width = 10,
+                              height = 6)
+```
+
+### DDM + Disorganized
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("bprs_disorg_ws_avg",
+           "v_sum",
+           "a_sum",
+           "t_sum",
+           "z_sum"),
+  new_names = c("BPRS Disorganized",
+                "Drift Rate (v)",
+                "Decision Threshold (a)",
+                "Non-Decision Time (t)",
+                "Degrees of Bias (z)"),
+  matrix_title = "cor_bprsD_ddm4_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_bprsD_ddm4_bl1,
+                              "_bprsD_ddm4_bl1.pdf",
+                              labels = c(
+                                "BPRS Disorganized",
+                                "Drift Rate (v)",
+                                "Decision Threshold (a)",
+                                "Non-Decision Time (t)",
+                                "Degrees of Bias (z)"),
+                              plot_title = "Spearman Correlations of Disorganized Symptoms and DDM Parameters",
+                              width = 10,
+                              height = 6)
+```
+
+### DDM + Mania
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("bprs_mania_ws_avg",
+           "v_sum",
+           "a_sum",
+           "t_sum",
+           "z_sum"),
+  new_names = c("BPRS Mania",
+                "Drift Rate (v)",
+                "Decision Threshold (a)",
+                "Non-Decision Time (t)",
+                "Degrees of Bias (z)"),
+  matrix_title = "cor_bprsM_ddm4_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_bprsM_ddm4_bl1,
+                              "_bprsM_ddm4_bl1.pdf",
+                              labels = c(
+                                "BPRS Mania",
+                                "Drift Rate (v)",
+                                "Decision Threshold (a)",
+                                "Non-Decision Time (t)",
+                                "Degrees of Bias (z)"),
+                              plot_title = "Spearman Correlations of Mania Symptoms and DDM Parameters",
+                              width = 10,
+                              height = 6)
+```
+
+### DDM + Depression-Anxiety
+```{r}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_ddm_bprs_bl1_pt,
+  vars = c("bprs_dep_anx_ws_avg",
+           "v_sum",
+           "a_sum",
+           "t_sum",
+           "z_sum"),
+  new_names = c("BPRS Depression-Anxiety",
+                "Drift Rate (v)",
+                "Decision Threshold (a)",
+                "Non-Decision Time (t)",
+                "Degrees of Bias (z)"),
+  matrix_title = "cor_bprsDA_ddm4_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_bprsDA_ddm4_bl1,
+                              "_bprsDA_ddm4_bl1.pdf",
+                              labels = c(
+                                "BPRS Depression-Anxiety",
+                                "Drift Rate (v)",
+                                "Decision Threshold (a)",
+                                "Non-Decision Time (t)",
+                                "Degrees of Bias (z)"),
+                              plot_title = "Spearman Correlations of Depression-Anxiety Symptoms and DDM Parameters",
+                              width = 10,
+                              height = 6)
 ```
 
 # TOPX CORRELATIONS
-# TOPX-BPRS Correlations at BL1+BL2 Comb - spearman
+## Prep data
+```{r}
+# filter data to only include intercepts and BPRS variables
+dat_topx_behav_bl1_wide <- dat_topx_behav_bl1 %>% 
+  select(c(subj_idx, group, visit, 
+           cttype, rt_mdn, error,
+           d_context, d_expect, 
+           bprs_total, bprs_pos_ws_avg,
+           bprs_neg_ws_avg,
+           bprs_disorg_ws_avg,
+           bprs_mania_ws_avg,
+           bprs_dep_anx_ws_avg))
+
+dat_topx_behav_bl1_wide <- dat_topx_behav_bl1_wide %>%
+  pivot_wider(id_cols = c(
+    subj_idx, group, visit, 
+    d_context, d_expect, 
+    bprs_total, bprs_pos_ws_avg,
+    bprs_neg_ws_avg, 
+    bprs_disorg_ws_avg,
+    bprs_mania_ws_avg, 
+    bprs_dep_anx_ws_avg), 
+    values_from = c(rt_mdn, error),
+    names_from = cttype)
+
+dat_topx_behav_bl1_pt_wide <- dat_topx_behav_bl1_wide %>%
+  filter(group == "Patient") %>% 
+  select(c(error_AX, error_AY, 
+           error_BX, error_BY,
+           d_context, d_expect,
+           bprs_pos_ws_avg,
+           bprs_neg_ws_avg,
+           bprs_disorg_ws_avg,
+           bprs_mania_ws_avg,
+           bprs_dep_anx_ws_avg))
+```
+
+## BPRS 5 + TOPX Error 3
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_topx_behav_bl1_pt_wide,
+  vars = c("error_AX",
+           "error_AY",
+           "error_BX",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("AX error",
+                "AY error",
+                "BX error",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_topx3_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_topx3_bprs5_bl1,
+                              "_topx3_bprs5_bl1.pdf",
+                              labels = c(
+                                "AX Error",
+                                "AY Error",
+                                "BX Error",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS Symptoms and TOPX Error Rates",
+                              width = 10,
+                              height = 6)
+```
+
+## BPRS 5 + TOPX 1
+### BPRS + AX error
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_topx_behav_bl1_pt_wide,
+  vars = c("error_AX",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("AX error",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_topxAX_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_topxAX_bprs5_bl1,
+                              "_topxAX_bprs5_bl1.pdf",
+                              labels = c(
+                                "AX Error",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS and AX Error Rate",
+                              width = 10,
+                              height = 6)
+```
+
+### BPRS + AY error
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_topx_behav_bl1_pt_wide,
+  vars = c("error_AY",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("AY error",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_topxAY_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_topxAY_bprs5_bl1,
+                              "_topxAY_bprs5_bl1.pdf",
+                              labels = c(
+                                "AY Error",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS and AY Error Rate",
+                              width = 10,
+                              height = 6)
+```
+
+### BPRS + BX error
+```{r, warning=FALSE}
+# run correlation and return coefficient, p-value, and FDR adjusted p-value
+spearman_corr(
+  data = dat_topx_behav_bl1_pt_wide,
+  vars = c("error_BX",
+           "bprs_pos_ws_avg",
+           "bprs_neg_ws_avg",
+           "bprs_disorg_ws_avg",
+           "bprs_mania_ws_avg",
+           "bprs_dep_anx_ws_avg"),
+  new_names = c("BX error",
+                "Positive",
+                "Negative",
+                "Disorganized",
+                "Mania",
+                "Depression-Anxiety"),
+  matrix_title = "cor_topxBX_bprs5_bl1"
+)
+
+# plot correlation matrix
+save_corrplot_pdf(cor_topxBX_bprs5_bl1,
+                              "_topxBX_bprs5_bl1.pdf",
+                              labels = c(
+                                "BX Error",
+                                "BPRS Positive",
+                                "BPRS Negative",
+                                "BPRS Disorganized",
+                                "BPRS Mania",
+                                "BPRS Depression-Anxiety"),
+                              plot_title = "Spearman Correlations of BPRS and BX Error Rate",
+                              width = 10,
+                              height = 6)
+```
+
+### BPRS + AX RT
+```{r}
+
+```
+
+### BPRS + AY RT
+```{r}
+
+```
+
+### BPRS + BX RT
+```{r}
+
+```
+
+
+## (Old) TOPX-BPRS Correlations at BL1+BL2 Comb - spearman
 ```{r, warning=FALSE}
 # filter data to only include intercepts and BPRS variables
 dat_topx_behav_wide <- dat_topx_behav %>% 
